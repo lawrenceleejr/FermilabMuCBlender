@@ -1,0 +1,5 @@
+# Only needed for the one-time data snapshot (scripts/fetch_data.py).
+# The Blender build/render pipeline has no external Python dependencies.
+requests
+numpy
+pillow

@@ -1,0 +1,47 @@
+name: build-scenes
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        style: [schematic, realistic]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Blender 4.5 LTS
+        run: |
+          curl -fsSL -o /tmp/blender.tar.xz \
+            https://download.blender.org/release/Blender4.5/blender-4.5.11-linux-x64.tar.xz
+          mkdir -p "$HOME/blender"
+          tar -xf /tmp/blender.tar.xz -C "$HOME/blender" --strip-components=1
+          echo "$HOME/blender" >> "$GITHUB_PATH"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxrender1 \
+            libgl1 libegl1 libsm6
+
+      - name: Build scene
+        run: |
+          blender --background --factory-startup \
+            --python scripts/build_scene.py -- \
+            --style ${{ matrix.style }} \
+            --out out/fermilab_muc_${{ matrix.style }}.blend
+
+      - name: Render stills
+        run: |
+          blender --background out/fermilab_muc_${{ matrix.style }}.blend \
+            --python scripts/render_stills.py -- --outdir out/renders
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fermilab-muc-${{ matrix.style }}
+          path: |
+            out/*.blend
+            out/renders/*.png
+          if-no-files-found: error
