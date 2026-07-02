@@ -247,7 +247,7 @@ def build_terrain(hm, style, cutaway):
     nt.links.new(ramp_surf.outputs["Color"], mixc.inputs[7])  # B: surface
     # faint emission so the pit interior isn't pitch black in shadow
     em = nt.nodes.new("ShaderNodeEmission")
-    em.inputs["Strength"].default_value = 0.10
+    em.inputs["Strength"].default_value = 0.05
     nt.links.new(mixc.outputs[2], em.inputs["Color"])
     add = nt.nodes.new("ShaderNodeAddShader")
     out_node = nt.nodes["Material Output"]
@@ -397,7 +397,7 @@ def ring_curve(name, center, radius, depth, tube_r, color, strength):
     bpy.context.scene.collection.objects.link(obj)
     obj.data.materials.append(
         emission_material(name + "Mat", color, strength=strength,
-                          mix_principled=0.15))
+                          mix_principled=0.3))
     link_to(obj, "Accelerators")
     return obj
 
@@ -416,7 +416,7 @@ def segment_curve(name, start, end, tube_r, color, strength):
     bpy.context.scene.collection.objects.link(obj)
     obj.data.materials.append(
         emission_material(name + "Mat", color, strength=strength,
-                          mix_principled=0.15))
+                          mix_principled=0.3))
     link_to(obj, "Accelerators")
     return obj
 
@@ -430,7 +430,7 @@ def azimuth_point(ring_cfg, azimuth_deg):
 
 def build_accelerators(hm, style):
     rings = {r["name"]: r for r in facility.RINGS}
-    strength = 3.5 if style == "schematic" else 1.2
+    strength = 3.5 if style == "schematic" else 1.0
     for r in facility.RINGS:
         radius = facility.ring_radius(r) + r.get("radius_offset", 0.0)
         ring_curve("Ring_" + r["name"], r["center"], radius,
@@ -505,6 +505,7 @@ def text_object(name, text, location, size, color, rotation=(0, 0, 0),
     bpy.context.scene.collection.objects.link(obj)
     obj.data.materials.append(
         emission_material(name + "Mat", color, strength=2.5))
+    obj.visible_shadow = False  # no giant text shadows on the terrain
     link_to(obj, "Annotations")
     return obj
 
@@ -535,6 +536,7 @@ def build_annotations(style):
         sw.name = f"LegendSwatch_{i}"
         sw.data.materials.append(
             emission_material(f"LegendSwatchMat_{i}", color, strength=1.8))
+        sw.visible_shadow = False
         link_to(sw, "Annotations")
         text_object(f"LegendText_{i}", label, (x0 + 220.0, y, 40.0), 140.0,
                     tcol, align="LEFT")
