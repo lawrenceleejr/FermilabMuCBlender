@@ -421,25 +421,29 @@ def _add_box(bm, center, size, slot_map, slot):
 
 
 def build_wilson_hall(hm, style):
-    """Sculpted twin-tower model: per-floor lofted cross-sections with a
-    quadratic inward sweep, atrium gap, crossover bridges, crown slab.
-    Material slots: 0 glass curtain walls, 1 concrete, 2 roof."""
+    """Sculpted model matched to reference photos: vertical outer faces
+    with horizontal window strips; atrium-side inner faces sweeping from a
+    narrow top slot to a wide wishbone stance; flat concrete slab ends;
+    vertically-mulled atrium glazing; rooftop parapet ears; splayed
+    abutment walls. Slots: 0 atrium glass, 1 board-form concrete (inner
+    faces/ears/abutments), 2 roof/canopy, 3 outer window bands, 4 end
+    panel concrete."""
     P = facility.WILSON_HALL_MODEL
     H = P["floors"] * P["floor_h"]
     L = P["length"]
 
     def profiles(z):
         t = z / H
-        outer = (P["half_width_top"]
-                 + (P["half_width_base"] - P["half_width_top"])
-                 * (1 - t) ** P["sweep_exp"])
-        gap = max(P["gap_half_min"], P["gap_half_base"] * (1 - t) ** 1.2)
+        outer = P["half_width"]
+        if z < P["flare_height"]:
+            outer += P["base_flare"] * (1.0 - z / P["flare_height"]) ** 2
+        gap = (P["gap_half_top"]
+               + (P["gap_half_base"] - P["gap_half_top"])
+               * (1 - t) ** P["sweep_exp"])
         return outer, gap
 
     bm = bmesh.new()
     slot_map = {}
-    # loft at half-floor steps and shade the curved faces smooth so the
-    # sweep reads as a continuous surface, not 16 facets
     nlev = 2 * P["floors"]
     levels = [k * P["floor_h"] / 2.0 for k in range(nlev + 1)]
     for sign in (1.0, -1.0):
@@ -455,15 +459,23 @@ def build_wilson_hall(hm, style):
             for e in range(4):
                 f = bm.faces.new((a[e], a[(e + 1) % 4],
                                   b[(e + 1) % 4], b[e]))
-                # e==2: swept outer face -> concrete w/ window strips (3);
-                # e==0: atrium-side face -> glass (0); e==1,3: concrete ends
-                slot_map[f] = 3 if e == 2 else (0 if e == 0 else 1)
-                f.smooth = e in (0, 2)
+                # e==0: curved atrium-side face -> concrete (1)
+                # e==2: vertical outer face -> window strips (3)
+                # e==1,3: flat slab ends -> panel concrete (4)
+                slot_map[f] = {0: 1, 2: 3}.get(e, 4)
+                f.smooth = e == 0
         slot_map[bm.faces.new(rings[0])] = 1
         slot_map[bm.faces.new(list(reversed(rings[-1])))] = 2
 
-    # the iconic glazed arch closing the atrium at both ends: glass walls
-    # spanning the tapering gap between the towers' inner faces
+        # rooftop parapet "ears" at both ends of each slab
+        outer_top, gap_top = profiles(H)
+        ymid = sign * (gap_top + outer_top) / 2.0
+        ywid = outer_top - gap_top
+        for ex in (L / 2 - P["ear_length"] / 2, -L / 2 + P["ear_length"] / 2):
+            _add_box(bm, (ex, ymid, H + P["ear_height"] / 2),
+                     (P["ear_length"], ywid, P["ear_height"]), slot_map, 1)
+
+    # atrium glazing closing both ends (narrow slot flaring to wide base)
     for k in range(nlev):
         z0, z1 = levels[k], levels[k + 1]
         _, g0 = profiles(z0)
@@ -477,13 +489,14 @@ def build_wilson_hall(hm, style):
             slot_map[f] = 0
             f.smooth = True
 
-    for k in P["bridge_floors"]:
-        z = k * P["floor_h"]
-        _, gap = profiles(z)
-        _add_box(bm, (0.0, 0.0, z + 1.6),
-                 (P["bridge_width"], 2 * gap + 1.2, 3.2), slot_map, 1)
-    outer_top, _ = profiles(H)
-    _add_box(bm, (0.0, 0.0, H + 0.9), (L, 2 * outer_top, 1.8), slot_map, 2)
+    # entrance canopies + splayed abutment walls at grade
+    _, gap_base = profiles(0.0)
+    for sx in (1.0, -1.0):
+        _add_box(bm, (sx * (L / 2 + 4.0), 0.0, 4.6),
+                 (9.0, 2 * gap_base * 0.8, 0.9), slot_map, 2)
+        for sy in (1.0, -1.0):
+            _add_box(bm, (sx * (L / 2 + 14.0), sy * (gap_base + 4.0), 1.8),
+                     (26.0, 3.0, 3.6), slot_map, 1)
 
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     mat_idx = [slot_map.get(f, 1) for f in bm.faces]
@@ -503,21 +516,11 @@ def build_wilson_hall(hm, style):
     if style == "schematic":
         m = emission_material("WilsonHallMat", (0.00, 0.45, 0.70),
                               strength=1.0, mix_principled=0.75)
-        for _ in range(4):
+        for _ in range(5):
             obj.data.materials.append(m)
         return
 
-    # slot 0: glass curtain wall with procedural floor bands + mullions,
-    # in Object coords so the grid survives the Z rotation
-    glass = bpy.data.materials.new("WH_Glass")
-    glass.use_nodes = True
-    nt = glass.node_tree
-    bsdf = nt.nodes["Principled BSDF"]
-    tc = nt.nodes.new("ShaderNodeTexCoord")
-    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
-    nt.links.new(tc.outputs["Object"], sep.inputs["Vector"])
-
-    def band_mask(axis_out, period, lo, hi):
+    def band_nodes(nt, axis_out, period, lo, hi):
         div = nt.nodes.new("ShaderNodeMath")
         div.operation = "DIVIDE"
         div.inputs[1].default_value = period
@@ -539,96 +542,93 @@ def build_wilson_hall(hm, style):
         nt.links.new(lt.outputs["Value"], mul.inputs[1])
         return mul.outputs["Value"]
 
-    floors = band_mask(sep.outputs["Z"], P["floor_h"], 0.10, 0.88)
-    bays = band_mask(sep.outputs["X"], 3.4, 0.06, 0.94)
-    wmask = nt.nodes.new("ShaderNodeMath")
-    wmask.operation = "MULTIPLY"
-    nt.links.new(floors, wmask.inputs[0])
-    nt.links.new(bays, wmask.inputs[1])
-    mixrgb = nt.nodes.new("ShaderNodeMix")
-    mixrgb.data_type = "RGBA"
-    nt.links.new(wmask.outputs["Value"], mixrgb.inputs["Factor"])
-    mixrgb.inputs[6].default_value = (0.20, 0.19, 0.18, 1.0)  # mullion
-    mixrgb.inputs[7].default_value = (0.01, 0.03, 0.06, 1.0)  # glass
-    nt.links.new(mixrgb.outputs[2], bsdf.inputs["Base Color"])
-    rough = nt.nodes.new("ShaderNodeMapRange")
-    rough.inputs["From Min"].default_value = 0.0
-    rough.inputs["From Max"].default_value = 1.0
-    rough.inputs["To Min"].default_value = 0.6
-    rough.inputs["To Max"].default_value = 0.12
-    nt.links.new(wmask.outputs["Value"], rough.inputs["Value"])
-    nt.links.new(rough.outputs["Result"], bsdf.inputs["Roughness"])
-    metal = nt.nodes.new("ShaderNodeMath")
-    metal.operation = "MULTIPLY"
-    metal.inputs[1].default_value = 0.25
-    nt.links.new(wmask.outputs["Value"], metal.inputs[0])
-    nt.links.new(metal.outputs["Value"], bsdf.inputs["Metallic"])
-    obj.data.materials.append(glass)
+    def masked_material(name, mask_builder, wall_rgb, dark_rgb,
+                        wall_rough=0.85, dark_rough=0.15, metallic=0.0):
+        mat = bpy.data.materials.new(name)
+        mat.use_nodes = True
+        nt = mat.node_tree
+        bsdf = nt.nodes["Principled BSDF"]
+        tc = nt.nodes.new("ShaderNodeTexCoord")
+        sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+        nt.links.new(tc.outputs["Object"], sep.inputs["Vector"])
+        mask = mask_builder(nt, sep)
+        mix = nt.nodes.new("ShaderNodeMix")
+        mix.data_type = "RGBA"
+        nt.links.new(mask, mix.inputs["Factor"])
+        mix.inputs[6].default_value = (*wall_rgb, 1.0)
+        mix.inputs[7].default_value = (*dark_rgb, 1.0)
+        nt.links.new(mix.outputs[2], bsdf.inputs["Base Color"])
+        rough = nt.nodes.new("ShaderNodeMapRange")
+        rough.inputs["To Min"].default_value = wall_rough
+        rough.inputs["To Max"].default_value = dark_rough
+        nt.links.new(mask, rough.inputs["Value"])
+        nt.links.new(rough.outputs["Result"], bsdf.inputs["Roughness"])
+        if metallic:
+            met = nt.nodes.new("ShaderNodeMath")
+            met.operation = "MULTIPLY"
+            met.inputs[1].default_value = metallic
+            nt.links.new(mask, met.inputs[0])
+            nt.links.new(met.outputs["Value"], bsdf.inputs["Metallic"])
+        return mat
 
-    # slot 1: mottled cast concrete
+    fh = P["floor_h"]
+
+    # slot 0: atrium glazing - strong vertical mullions (bays across Y),
+    # faint floor transoms, dark green-blue glass
+    def glass_mask(nt, sep):
+        bays = band_nodes(nt, sep.outputs["Y"], 2.4, 0.05, 0.95)
+        floors = band_nodes(nt, sep.outputs["Z"], fh, 0.04, 0.97)
+        mul = nt.nodes.new("ShaderNodeMath")
+        mul.operation = "MULTIPLY"
+        nt.links.new(bays, mul.inputs[0])
+        nt.links.new(floors, mul.inputs[1])
+        return mul.outputs["Value"]
+
+    obj.data.materials.append(masked_material(
+        "WH_AtriumGlass", glass_mask,
+        (0.10, 0.10, 0.10), (0.01, 0.04, 0.04),
+        wall_rough=0.5, dark_rough=0.08, metallic=0.3))
+
+    # slot 1: board-formed concrete (curved inner faces, ears, abutments)
     conc = bpy.data.materials.new("WH_Concrete")
     conc.use_nodes = True
     nt2 = conc.node_tree
     bsdf2 = nt2.nodes["Principled BSDF"]
-    bsdf2.inputs["Roughness"].default_value = 0.85
+    bsdf2.inputs["Roughness"].default_value = 0.88
     tc2 = nt2.nodes.new("ShaderNodeTexCoord")
     noise = nt2.nodes.new("ShaderNodeTexNoise")
-    noise.inputs["Scale"].default_value = 0.08
-    noise.inputs["Detail"].default_value = 3.0
+    noise.inputs["Scale"].default_value = 0.35
+    noise.inputs["Detail"].default_value = 4.0
     nt2.links.new(tc2.outputs["Object"], noise.inputs["Vector"])
     ramp = nt2.nodes.new("ShaderNodeValToRGB")
-    ramp.color_ramp.elements[0].color = (0.50, 0.48, 0.46, 1.0)
-    ramp.color_ramp.elements[1].color = (0.60, 0.58, 0.55, 1.0)
+    ramp.color_ramp.elements[0].color = (0.52, 0.50, 0.47, 1.0)
+    ramp.color_ramp.elements[1].color = (0.63, 0.61, 0.57, 1.0)
     nt2.links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
     nt2.links.new(ramp.outputs["Color"], bsdf2.inputs["Base Color"])
     obj.data.materials.append(conc)
 
-    # slot 2: roof
+    # slot 2: roof / canopy
     obj.data.materials.append(
-        principled_material("WH_Roof", (0.18, 0.18, 0.19), roughness=0.9))
+        principled_material("WH_Roof", (0.20, 0.20, 0.21), roughness=0.9))
 
-    # slot 3: swept outer faces - cast concrete with recessed horizontal
-    # window strips per floor
-    bands = bpy.data.materials.new("WH_ConcreteBands")
-    bands.use_nodes = True
-    nt3 = bands.node_tree
-    bsdf3 = nt3.nodes["Principled BSDF"]
-    tc3 = nt3.nodes.new("ShaderNodeTexCoord")
-    sep3 = nt3.nodes.new("ShaderNodeSeparateXYZ")
-    nt3.links.new(tc3.outputs["Object"], sep3.inputs["Vector"])
-    div3 = nt3.nodes.new("ShaderNodeMath")
-    div3.operation = "DIVIDE"
-    div3.inputs[1].default_value = P["floor_h"]
-    nt3.links.new(sep3.outputs["Z"], div3.inputs[0])
-    frac3 = nt3.nodes.new("ShaderNodeMath")
-    frac3.operation = "FRACT"
-    nt3.links.new(div3.outputs["Value"], frac3.inputs[0])
-    gt3 = nt3.nodes.new("ShaderNodeMath")
-    gt3.operation = "GREATER_THAN"
-    gt3.inputs[1].default_value = 0.52
-    nt3.links.new(frac3.outputs["Value"], gt3.inputs[0])
-    lt3 = nt3.nodes.new("ShaderNodeMath")
-    lt3.operation = "LESS_THAN"
-    lt3.inputs[1].default_value = 0.92
-    nt3.links.new(frac3.outputs["Value"], lt3.inputs[0])
-    strip = nt3.nodes.new("ShaderNodeMath")
-    strip.operation = "MULTIPLY"
-    nt3.links.new(gt3.outputs["Value"], strip.inputs[0])
-    nt3.links.new(lt3.outputs["Value"], strip.inputs[1])
-    mix3 = nt3.nodes.new("ShaderNodeMix")
-    mix3.data_type = "RGBA"
-    nt3.links.new(strip.outputs["Value"], mix3.inputs["Factor"])
-    mix3.inputs[6].default_value = (0.55, 0.52, 0.48, 1.0)  # concrete
-    mix3.inputs[7].default_value = (0.02, 0.03, 0.05, 1.0)  # window strip
-    nt3.links.new(mix3.outputs[2], bsdf3.inputs["Base Color"])
-    rough3 = nt3.nodes.new("ShaderNodeMapRange")
-    rough3.inputs["From Min"].default_value = 0.0
-    rough3.inputs["From Max"].default_value = 1.0
-    rough3.inputs["To Min"].default_value = 0.85
-    rough3.inputs["To Max"].default_value = 0.15
-    nt3.links.new(strip.outputs["Value"], rough3.inputs["Value"])
-    nt3.links.new(rough3.outputs["Result"], bsdf3.inputs["Roughness"])
-    obj.data.materials.append(bands)
+    # slot 3: vertical outer faces - 16 horizontal window strips between
+    # concrete spandrels
+    def strip_mask(nt, sep):
+        return band_nodes(nt, sep.outputs["Z"], fh, 0.34, 0.74)
+
+    obj.data.materials.append(masked_material(
+        "WH_WindowStrips", strip_mask,
+        (0.58, 0.56, 0.52), (0.02, 0.04, 0.05),
+        wall_rough=0.85, dark_rough=0.12, metallic=0.2))
+
+    # slot 4: flat slab ends - precast panels with thin horizontal joints
+    def joint_mask(nt, sep):
+        return band_nodes(nt, sep.outputs["Z"], fh, 0.0, 0.035)
+
+    obj.data.materials.append(masked_material(
+        "WH_EndPanels", joint_mask,
+        (0.60, 0.58, 0.54), (0.38, 0.36, 0.33),
+        wall_rough=0.88, dark_rough=0.88))
 
 
 # --- buildings -----------------------------------------------------------------
@@ -987,10 +987,11 @@ def build_cameras(style, wilson_xy, hm):
     else:
         wx, wy = wilson_xy or (0.0, 0.0)
         wz = hm.sample(wx, wy)
-        # 3/4 from the ENE: end-on twin-pylon profile plus the raked glass face
+        # near end-on from the SSW (sunlit side): the iconic wishbone pylons
+        # + atrium glass arch, slight 3/4 so the striped long face reads
         cams.append(add_camera("Cam_WilsonHall",
-                               (wx + 640, wy + 140, wz + 110),
-                               (wx, wy, wz + 46), lens=55.0))
+                               (wx - 151, wy - 389, wz + 22),
+                               (wx, wy, wz + 40), lens=42.0))
     bpy.context.scene.camera = cams[0]
     bpy.context.scene["render_cameras"] = [c.name for c in cams]
 

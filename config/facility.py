@@ -197,23 +197,26 @@ WATER_Z_OFFSET = 0.6       # water surface above mean sampled terrain (m)
 WATER_MIN_AREA = 400.0     # m^2, drop micro-ponds
 
 # --- Wilson Hall sculpted model ----------------------------------------------
-# Twin cast-concrete towers sweeping inward toward the top, central atrium,
-# crossover bridges from the 7th floor up; 16 stories, long axis ~38 deg east
-# of north. Dimensions approximated from the OSM footprint (~97 x 104 m) and
-# architectural references.
+# Geometry matched to reference photography (Wikimedia Commons exterior
+# shots + aerial): two slabs with VERTICAL outer faces (16 horizontal
+# window strips), whose atrium-side inner faces sweep from a ~7 m slot at
+# the top out to a wide wishbone stance at grade; flat concrete slab ends
+# (the "pylons" seen end-on), vertically-mulled atrium glazing closing
+# both ends, stepped parapet "ears" at the four roof corners, and low
+# splayed abutment walls at grade. 16 stories, long axis ~38 deg E of N.
 WILSON_HALL_MODEL = {
     "floors": 16,
     "floor_h": 4.6,            # => 73.6 m total
-    "length": 97.0,            # long axis (local X before rotation)
-    "half_width_base": 32.0,   # outer wall half-width at grade
-    "half_width_top": 10.0,    # outer wall half-width at roof
-    "sweep_exp": 2.4,          # outer-wall sweep exponent (higher = more
-                               # dramatic flare at the base)
-    "gap_half_base": 7.0,      # atrium half-gap at grade (14 m slot)
-    "gap_half_min": 0.7,       # towers nearly touch at the top
+    "length": 96.0,            # long axis (local X before rotation)
+    "half_width": 22.0,        # outer face half-width (vertical, constant)
+    "base_flare": 4.0,         # outer face flares this much at grade...
+    "flare_height": 10.0,      # ...dying out by this height
+    "gap_half_top": 3.4,       # atrium half-gap at roof (narrow slot)
+    "gap_half_base": 15.0,     # atrium half-gap at grade (wishbone stance)
+    "sweep_exp": 2.5,          # inner-face sweep exponent
+    "ear_height": 3.6,         # rooftop parapet blocks at the four corners
+    "ear_length": 12.0,
     "rotation_deg": 38.0,      # long-axis bearing east of north
-    "bridge_floors": (7, 9, 11, 13, 15),
-    "bridge_width": 9.0,
 }
 
 # --- Building material palettes (linear RGB) ----------------------------------
