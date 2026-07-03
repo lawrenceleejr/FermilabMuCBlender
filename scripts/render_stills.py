@@ -24,12 +24,17 @@ def main():
         cams = [o.name for o in sc.objects if o.type == "CAMERA"]
     os.makedirs(args.outdir, exist_ok=True)
 
+    annotations = bpy.data.collections.get("Annotations")
     for name in cams:
         cam = bpy.data.objects.get(name)
         if cam is None:
             print(f"WARNING: camera {name!r} missing, skipping")
             continue
         sc.camera = cam
+        if annotations is not None:
+            # the legend/title live in world space near the ground; hide them
+            # for the ground-level hero shot where they'd float on the horizon
+            annotations.hide_render = (name == "Cam_WilsonHall")
         path = os.path.abspath(os.path.join(args.outdir, f"{style}_{name}.png"))
         sc.render.filepath = path
         print(f"rendering {name} -> {path}")

@@ -30,6 +30,9 @@ from config import facility
 from scripts import geo
 
 TERRAIN_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
+# ArcGIS tile order is z/y/x (row before column)
+IMAGERY_URL = ("https://basemap.nationalmap.gov/arcgis/rest/services/"
+               "USGSImageryOnly/MapServer/tile/{z}/{y}/{x}")
 OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
@@ -115,6 +118,79 @@ def fetch_terrain(bbox, zoom, grid_n):
         "z_datum": z_datum,
         "origin_latlon": np.array([facility.ORIGIN_LAT, facility.ORIGIN_LON]),
     }
+
+
+# --- Aerial imagery ------------------------------------------------------------
+
+def fetch_imagery(georef, zoom, width, out_path):
+    """Mosaic USGS aerial tiles and resample onto the heightmap's exact ENU
+    extent, so the build side can UV-map with u=(x-x0)/xext, v=(y-y0)/yext.
+    JPEG row 0 = north."""
+    x0, y0 = georef["x0"], georef["y0"]
+    n, dx, dy = georef["n"], georef["dx"], georef["dy"]
+    xext, yext = (n - 1) * dx, (n - 1) * dy
+    lat_s, lon_w = geo.enu_to_latlon(x0, y0, facility.ORIGIN_LAT,
+                                     facility.ORIGIN_LON)
+    lat_n, lon_e = geo.enu_to_latlon(x0 + xext, y0 + yext,
+                                     facility.ORIGIN_LAT, facility.ORIGIN_LON)
+
+    xw_f, ys_f = geo.latlon_to_tile(lat_s, lon_w, zoom)
+    xe_f, yn_f = geo.latlon_to_tile(lat_n, lon_e, zoom)
+    tx0, tx1 = int(xw_f), int(xe_f)
+    ty0, ty1 = int(yn_f), int(ys_f)  # tile y grows southward
+    nx, ny = tx1 - tx0 + 1, ty1 - ty0 + 1
+    print(f"imagery: {nx}x{ny} tiles at z={zoom}")
+
+    mosaic = np.zeros((ny * TILE_SIZE, nx * TILE_SIZE, 3), dtype=np.uint8)
+    failed = 0
+    for ix in range(tx0, tx1 + 1):
+        for iy in range(ty0, ty1 + 1):
+            try:
+                r = http_get(IMAGERY_URL.format(z=zoom, y=iy, x=ix))
+                img = np.asarray(
+                    Image.open(io.BytesIO(r.content)).convert("RGB"),
+                    dtype=np.uint8)
+            except Exception as e:  # noqa: BLE001
+                failed += 1
+                print(f"imagery: tile {zoom}/{iy}/{ix} failed: {e}")
+                img = np.full((TILE_SIZE, TILE_SIZE, 3), (90, 105, 80),
+                              dtype=np.uint8)
+            mosaic[(iy - ty0) * TILE_SIZE:(iy - ty0 + 1) * TILE_SIZE,
+                   (ix - tx0) * TILE_SIZE:(ix - tx0 + 1) * TILE_SIZE] = img
+    total = nx * ny
+    if failed > 0.05 * total:
+        raise RuntimeError(f"imagery: {failed}/{total} tiles failed - aborting")
+
+    # regular ENU grid -> fractional mosaic pixel coords (same math as terrain)
+    hpx = int(round(width * yext / xext))
+    xs = np.linspace(x0, x0 + xext, width)
+    ys = np.linspace(y0, y0 + yext, hpx)
+    Xg, Yg = np.meshgrid(xs, ys)  # row 0 = south
+    lat = facility.ORIGIN_LAT + Yg / geo.M_PER_DEG_LAT
+    lon = facility.ORIGIN_LON + Xg / (geo.M_PER_DEG_LON_EQ *
+                                      math.cos(math.radians(facility.ORIGIN_LAT)))
+    ntiles = 2.0 ** zoom
+    xt = (lon + 180.0) / 360.0 * ntiles
+    yt = (1.0 - np.arcsinh(np.tan(np.radians(lat))) / np.pi) / 2.0 * ntiles
+    px = np.clip((xt - tx0) * TILE_SIZE - 0.5, 0, mosaic.shape[1] - 1.001)
+    py = np.clip((yt - ty0) * TILE_SIZE - 0.5, 0, mosaic.shape[0] - 1.001)
+    ix0 = np.floor(px).astype(int)
+    iy0 = np.floor(py).astype(int)
+    fx = (px - ix0)[..., None]
+    fy = (py - iy0)[..., None]
+    m = mosaic.astype(np.float32)
+    out = (m[iy0, ix0] * (1 - fx) * (1 - fy) + m[iy0, ix0 + 1] * fx * (1 - fy)
+           + m[iy0 + 1, ix0] * (1 - fx) * fy + m[iy0 + 1, ix0 + 1] * fx * fy)
+    out = out[::-1]  # row 0 = north for the saved JPEG
+
+    for quality in (85, 80, 72):
+        Image.fromarray(out.astype(np.uint8)).save(out_path, quality=quality,
+                                                   optimize=True)
+        mb = os.path.getsize(out_path) / 1e6
+        print(f"imagery: {width}x{hpx} q{quality} -> {mb:.1f} MB")
+        if mb <= facility.IMAGERY_MAX_MB:
+            return
+    raise RuntimeError("imagery: could not fit size budget")
 
 
 # --- Buildings ---------------------------------------------------------------
@@ -219,6 +295,48 @@ out body geom;
     return {"type": "FeatureCollection", "features": feats}
 
 
+def fetch_water(bbox):
+    s, w, n, e = bbox
+    q = f"""
+[out:json][timeout:25];
+( way["natural"="water"]({s},{w},{n},{e});
+  relation["natural"="water"]({s},{w},{n},{e}); );
+out body geom;
+"""
+    feats = []
+    try:
+        data = overpass_query(q)
+    except RuntimeError as err:
+        print(f"water: overpass failed ({err}) -> writing empty collection")
+        data = {"elements": []}
+    dropped = 0
+    for el in data.get("elements", []):
+        rings = []
+        if el["type"] == "way" and "geometry" in el:
+            rings = [el["geometry"]]
+        elif el["type"] == "relation":
+            rings = [m["geometry"] for m in el.get("members", [])
+                     if m.get("role") == "outer" and "geometry" in m]
+        for raw in rings:
+            ring = ring_to_enu(raw)
+            if len(ring) > 1 and ring[0] == ring[-1]:
+                ring = ring[:-1]
+            if len(ring) < 3:
+                continue
+            area = abs(geo.polygon_area(ring))
+            if area < facility.WATER_MIN_AREA:
+                dropped += 1
+                continue
+            feats.append({
+                "type": "Feature",
+                "geometry": {"type": "Polygon", "coordinates": [ring]},
+                "properties": {"name": el.get("tags", {}).get("name", ""),
+                               "area": area},
+            })
+    print(f"water: {len(feats)} polygons ({dropped} tiny dropped)")
+    return {"type": "FeatureCollection", "features": feats}
+
+
 def fetch_boundary():
     q = """
 [out:json][timeout:180];
@@ -260,22 +378,44 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--zoom", type=int, default=13)
     ap.add_argument("--grid", type=int, default=512)
+    ap.add_argument("--imagery-zoom", type=int, default=facility.IMAGERY_ZOOM)
+    ap.add_argument("--imagery-width", type=int, default=facility.IMAGERY_WIDTH)
+    ap.add_argument("--steps", default="terrain,buildings,boundary,imagery,water",
+                    help="comma-separated subset of fetch steps to run")
     ap.add_argument("--out", default="data")
     args = ap.parse_args()
+    steps = set(args.steps.split(","))
 
     os.makedirs(args.out, exist_ok=True)
     bbox = facility.FETCH_BBOX
+    hm_path = os.path.join(args.out, "heightmap.npz")
 
-    hm = fetch_terrain(bbox, args.zoom, args.grid)
-    np.savez_compressed(os.path.join(args.out, "heightmap.npz"), **hm)
+    if "terrain" in steps:
+        hm = fetch_terrain(bbox, args.zoom, args.grid)
+        np.savez_compressed(hm_path, **hm)
 
-    buildings = fetch_buildings(bbox)
-    with open(os.path.join(args.out, "buildings.geojson"), "w") as f:
-        json.dump(buildings, f)
+    if "buildings" in steps:
+        buildings = fetch_buildings(bbox)
+        with open(os.path.join(args.out, "buildings.geojson"), "w") as f:
+            json.dump(buildings, f)
 
-    boundary = fetch_boundary()
-    with open(os.path.join(args.out, "site_boundary.geojson"), "w") as f:
-        json.dump(boundary, f)
+    if "boundary" in steps:
+        boundary = fetch_boundary()
+        with open(os.path.join(args.out, "site_boundary.geojson"), "w") as f:
+            json.dump(boundary, f)
+
+    if "imagery" in steps:
+        d = np.load(hm_path)
+        georef = {"x0": float(d["x0"]), "y0": float(d["y0"]),
+                  "dx": float(d["dx"]), "dy": float(d["dy"]),
+                  "n": d["z"].shape[0]}
+        fetch_imagery(georef, args.imagery_zoom, args.imagery_width,
+                      os.path.join(args.out, "imagery.jpg"))
+
+    if "water" in steps:
+        water = fetch_water(bbox)
+        with open(os.path.join(args.out, "water.geojson"), "w") as f:
+            json.dump(water, f)
 
     print("done.")
 

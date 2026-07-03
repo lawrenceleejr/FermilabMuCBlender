@@ -31,6 +31,24 @@ projection (error < ~10 m over the ~10 km scene).
   (true for Wilson Hall, whose height is pinned to 76 m).
 - Multipolygon relations keep outer rings only.
 
+## imagery.jpg
+
+- Source: [USGS The National Map — USGSImageryOnly service]
+  (https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer)
+  (NAIP-derived), tiles at zoom 16 (~1.8 m/px), fetched 2026-07-02.
+- Public domain (USGS/USDA NAIP). Courtesy: "Imagery courtesy of USGS The
+  National Map / NAIP".
+- Mosaicked and bilinearly resampled onto the exact ENU extent of
+  `heightmap.npz` (contract: image spans x0..x0+511*dx, y0..y0+511*dy;
+  top row = north), so the scene builder UV-maps it with a plain planar
+  unwrap.
+
+## water.geojson
+
+- Source: OpenStreetMap `natural=water` ways + multipolygon outer rings in
+  the fetch bbox; (c) OpenStreetMap contributors, ODbL. Polygons smaller
+  than 400 m^2 dropped.
+
 ## site_boundary.geojson
 
 - Source: OSM way "Fermi National Accelerator Laboratory"

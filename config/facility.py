@@ -188,6 +188,46 @@ SITE_BOUNDARY_FALLBACK = [
     (CAMPUS_CENTER[0] - _B, CAMPUS_CENTER[1] + _B),
 ]
 
+# --- Aerial imagery / surface overlays ---------------------------------------
+IMAGERY_ZOOM = 16          # USGSImageryOnly max useful zoom here (~1.8 m/px)
+IMAGERY_WIDTH = 4096       # output px E-W; N-S derived from heightmap aspect
+IMAGERY_MAX_MB = 14.0
+ONSITE_RADIUS = 2800.0     # "on campus" test radius around CAMPUS_CENTER
+WATER_Z_OFFSET = 0.6       # water surface above mean sampled terrain (m)
+WATER_MIN_AREA = 400.0     # m^2, drop micro-ponds
+
+# --- Wilson Hall sculpted model ----------------------------------------------
+# Twin cast-concrete towers sweeping inward toward the top, central atrium,
+# crossover bridges from the 7th floor up; 16 stories, long axis ~38 deg east
+# of north. Dimensions approximated from the OSM footprint (~97 x 104 m) and
+# architectural references.
+WILSON_HALL_MODEL = {
+    "floors": 16,
+    "floor_h": 4.6,            # => 73.6 m total
+    "length": 97.0,            # long axis (local X before rotation)
+    "half_width_base": 45.0,   # outer wall half-width at grade
+    "half_width_top": 12.0,    # outer wall half-width at roof
+    "gap_half_base": 8.0,      # atrium half-gap at grade (16 m slot)
+    "gap_half_min": 0.7,       # towers nearly touch at the top
+    "rotation_deg": 38.0,      # long-axis bearing east of north
+    "bridge_floors": (7, 9, 11, 13, 15),
+    "bridge_width": 9.0,
+}
+
+# --- Building material palettes (linear RGB) ----------------------------------
+BUILDING_PALETTE_OFFSITE = [
+    (0.58, 0.55, 0.50),  # warm gray
+    (0.52, 0.54, 0.57),  # cool gray
+    (0.60, 0.56, 0.47),  # pale tan
+    (0.48, 0.46, 0.43),  # gray-brown
+]
+BUILDING_PALETTE_ONSITE = [
+    (0.55, 0.48, 0.40),  # warm concrete
+    (0.42, 0.45, 0.50),  # cool concrete
+    (0.55, 0.42, 0.30),  # tan brick
+    (0.38, 0.40, 0.42),  # gray metal
+]
+
 # --- Geology (cutaway face shading) -----------------------------------------
 GLACIAL_TILL_BOTTOM = -70.0     # tan glacial deposits above
 DOLOMITE_BOTTOM = -207.0        # Galena-Platteville dolomite layer bottom

@@ -105,6 +105,8 @@ class Heightmap:
         self.dx = float(d["dx"])
         self.dy = float(d["dy"])
         self.n = self.z.shape[0]
+        self.xext = (self.n - 1) * self.dx
+        self.yext = (self.n - 1) * self.dy
 
     def sample(self, x, y):
         """Bilinear ground height at ENU (x, y); scene z (datum-relative)."""
@@ -199,6 +201,19 @@ def build_terrain(hm, style, cutaway):
     bpy.context.scene.collection.objects.link(obj)
     link_to(obj, "Terrain")
 
+    # planar-XY UV layer for the imagery drape (vectorized; ~2M loops)
+    uvl = mesh.uv_layers.new(name="UVMap")
+    nloops = len(mesh.loops)
+    vidx = np.empty(nloops, dtype=np.int32)
+    mesh.loops.foreach_get("vertex_index", vidx)
+    co = np.empty(len(mesh.vertices) * 3)
+    mesh.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    uv = np.empty((nloops, 2))
+    uv[:, 0] = (co[vidx, 0] - hm.x0) / hm.xext
+    uv[:, 1] = (co[vidx, 1] - hm.y0) / hm.yext
+    uvl.data.foreach_set("uv", uv.ravel())
+
     # Material: green-brown by height above datum on top; stratigraphy
     # stripes on the cut faces (driven by world z below ~-2 m).
     mat = bpy.data.materials.new("TerrainRealistic")
@@ -209,17 +224,35 @@ def build_terrain(hm, style, cutaway):
     geom = nt.nodes.new("ShaderNodeNewGeometry")
     sep = nt.nodes.new("ShaderNodeSeparateXYZ")
     nt.links.new(geom.outputs["Position"], sep.inputs["Vector"])
-    # surface tint by elevation
-    ramp_surf = nt.nodes.new("ShaderNodeValToRGB")
-    ramp_surf.color_ramp.elements[0].position = 0.0
-    ramp_surf.color_ramp.elements[0].color = (0.06, 0.18, 0.04, 1.0)  # low: green
-    ramp_surf.color_ramp.elements[1].position = 1.0
-    ramp_surf.color_ramp.elements[1].color = (0.28, 0.24, 0.11, 1.0)  # high: brown
-    map_surf = nt.nodes.new("ShaderNodeMapRange")
-    map_surf.inputs["From Min"].default_value = -20.0
-    map_surf.inputs["From Max"].default_value = 25.0
-    nt.links.new(sep.outputs["Z"], map_surf.inputs["Value"])
-    nt.links.new(map_surf.outputs["Result"], ramp_surf.inputs["Fac"])
+    # surface branch: draped aerial imagery if available, else elevation tint
+    img_path = os.path.join(DATA, "imagery.jpg")
+    if os.path.exists(img_path):
+        img = bpy.data.images.load(img_path, check_existing=True)
+        img.pack()  # self-contained .blend
+        tex = nt.nodes.new("ShaderNodeTexImage")
+        tex.image = img
+        tex.interpolation = "Linear"
+        tex.extension = "EXTEND"
+        uvn = nt.nodes.new("ShaderNodeUVMap")
+        uvn.uv_map = "UVMap"
+        nt.links.new(uvn.outputs["UV"], tex.inputs["Vector"])
+        hsv = nt.nodes.new("ShaderNodeHueSaturation")
+        hsv.inputs["Saturation"].default_value = 1.15  # counter Filmic wash-out
+        nt.links.new(tex.outputs["Color"], hsv.inputs["Color"])
+        surf_color_out = hsv.outputs["Color"]
+    else:
+        print("terrain: data/imagery.jpg missing -> elevation tint fallback")
+        ramp_surf = nt.nodes.new("ShaderNodeValToRGB")
+        ramp_surf.color_ramp.elements[0].position = 0.0
+        ramp_surf.color_ramp.elements[0].color = (0.06, 0.18, 0.04, 1.0)
+        ramp_surf.color_ramp.elements[1].position = 1.0
+        ramp_surf.color_ramp.elements[1].color = (0.28, 0.24, 0.11, 1.0)
+        map_surf = nt.nodes.new("ShaderNodeMapRange")
+        map_surf.inputs["From Min"].default_value = -20.0
+        map_surf.inputs["From Max"].default_value = 25.0
+        nt.links.new(sep.outputs["Z"], map_surf.inputs["Value"])
+        nt.links.new(map_surf.outputs["Result"], ramp_surf.inputs["Fac"])
+        surf_color_out = ramp_surf.outputs["Color"]
     # underground stratigraphy: till above GLACIAL_TILL_BOTTOM, dolomite below
     ramp_geo = nt.nodes.new("ShaderNodeValToRGB")
     ramp_geo.color_ramp.interpolation = "CONSTANT"
@@ -235,16 +268,27 @@ def build_terrain(hm, style, cutaway):
     map_geo.inputs["From Max"].default_value = 0.0
     nt.links.new(sep.outputs["Z"], map_geo.inputs["Value"])
     nt.links.new(map_geo.outputs["Result"], ramp_geo.inputs["Fac"])
-    # blend surface vs underground by z threshold
-    thresh = nt.nodes.new("ShaderNodeMath")
-    thresh.operation = "GREATER_THAN"
-    thresh.inputs[1].default_value = -2.0
-    nt.links.new(sep.outputs["Z"], thresh.inputs[0])
+    # surface = upward-facing AND not deep (near-vertical pit walls and the
+    # pit floor / block underside stay on the stratigraphy branch)
+    sep_n = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(geom.outputs["Normal"], sep_n.inputs["Vector"])
+    up_test = nt.nodes.new("ShaderNodeMath")
+    up_test.operation = "GREATER_THAN"
+    up_test.inputs[1].default_value = 0.7
+    nt.links.new(sep_n.outputs["Z"], up_test.inputs[0])
+    z_test = nt.nodes.new("ShaderNodeMath")
+    z_test.operation = "GREATER_THAN"
+    z_test.inputs[1].default_value = -40.0
+    nt.links.new(sep.outputs["Z"], z_test.inputs[0])
+    both = nt.nodes.new("ShaderNodeMath")
+    both.operation = "MULTIPLY"
+    nt.links.new(up_test.outputs["Value"], both.inputs[0])
+    nt.links.new(z_test.outputs["Value"], both.inputs[1])
     mixc = nt.nodes.new("ShaderNodeMix")
     mixc.data_type = "RGBA"
-    nt.links.new(thresh.outputs["Value"], mixc.inputs["Factor"])
-    nt.links.new(ramp_geo.outputs["Color"], mixc.inputs[6])   # A: underground
-    nt.links.new(ramp_surf.outputs["Color"], mixc.inputs[7])  # B: surface
+    nt.links.new(both.outputs["Value"], mixc.inputs["Factor"])
+    nt.links.new(ramp_geo.outputs["Color"], mixc.inputs[6])  # A: underground
+    nt.links.new(surf_color_out, mixc.inputs[7])             # B: surface
     # faint emission so the pit interior isn't pitch black in shadow
     em = nt.nodes.new("ShaderNodeEmission")
     em.inputs["Strength"].default_value = 0.05
@@ -257,16 +301,28 @@ def build_terrain(hm, style, cutaway):
     nt.links.new(mixc.outputs[2], bsdf.inputs["Base Color"])
     obj.data.materials.append(mat)
 
-    # large backdrop plane so the scene doesn't float on a black void
-    bpy.ops.mesh.primitive_plane_add(size=60000.0,
-                                     location=(facility.CAMPUS_CENTER[0],
-                                               facility.CAMPUS_CENTER[1],
-                                               facility.TERRAIN_SOLID_BOTTOM - 5.0))
-    bd = bpy.context.object
-    bd.name = "Backdrop"
-    bd.data.materials.append(
-        principled_material("BackdropMat", (0.10, 0.16, 0.07), roughness=1.0))
-    link_to(bd, "Terrain")
+    # apron planes just below grade around the terrain block, so its edges
+    # don't read as a 260 m cliff from low cameras (they can't cross the pit,
+    # which sits well inside the grid)
+    apron_mat = principled_material("ApronMat", (0.13, 0.17, 0.09),
+                                    roughness=1.0)
+    x0, y0 = hm.x0, hm.y0
+    x1, y1 = hm.x0 + hm.xext, hm.y0 + hm.yext
+    reach = 30000.0
+    az = -25.0
+    aprons = [
+        ((x0 + x1) / 2, y1 + reach / 2, hm.xext + 2 * reach, reach),  # north
+        ((x0 + x1) / 2, y0 - reach / 2, hm.xext + 2 * reach, reach),  # south
+        (x1 + reach / 2, (y0 + y1) / 2, reach, hm.yext),              # east
+        (x0 - reach / 2, (y0 + y1) / 2, reach, hm.yext),              # west
+    ]
+    for i, (cx_, cy_, sx, sy) in enumerate(aprons):
+        bpy.ops.mesh.primitive_plane_add(size=1.0, location=(cx_, cy_, az))
+        ap = bpy.context.object
+        ap.scale = (sx, sy, 1.0)
+        ap.name = f"Apron_{i}"
+        ap.data.materials.append(apron_mat)
+        link_to(ap, "Terrain")
     return obj
 
 
@@ -291,9 +347,230 @@ def build_boundary(hm, style):
     link_to(obj, "Terrain")
 
 
+# --- water ---------------------------------------------------------------------
+
+def build_water(hm, cutaway):
+    """Flat specular caps for OSM water polygons (realistic style only)."""
+    path = os.path.join(DATA, "water.geojson")
+    if not os.path.exists(path):
+        print("water: data/water.geojson missing, skipping")
+        return
+    with open(path) as f:
+        feats = json.load(f).get("features", [])
+    if not feats:
+        print("water: empty collection, skipping")
+        return
+
+    bm = bmesh.new()
+    placed = 0
+    for feat in feats:
+        ring = feat["geometry"]["coordinates"][0]
+        ring = [p for i, p in enumerate(ring)
+                if i == 0 or (abs(p[0] - ring[i - 1][0]) > 1e-6
+                              or abs(p[1] - ring[i - 1][1]) > 1e-6)]
+        if len(ring) < 3:
+            continue
+        if cutaway and any(in_cut(x, y) for x, y in ring):
+            continue
+        # drop polygons leaking past the terrain grid (e.g. Fox River)
+        if any(not (hm.x0 - 100 < x < hm.x0 + hm.xext + 100
+                    and hm.y0 - 100 < y < hm.y0 + hm.yext + 100)
+               for x, y in ring):
+            continue
+        coords = [Vector((x, y, 0.0)) for x, y in ring]
+        tris = tessellate_polygon([coords])
+        if not tris:
+            continue
+        z = (sum(hm.sample(x, y) for x, y in ring) / len(ring)
+             + facility.WATER_Z_OFFSET)
+        vs = [bm.verts.new((x, y, z)) for x, y in ring]
+        for a, b, c in tris:
+            try:
+                bm.faces.new((vs[a], vs[b], vs[c]))
+            except ValueError:
+                pass
+        placed += 1
+
+    mesh = bpy.data.meshes.new("WaterMesh")
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.validate()
+    obj = bpy.data.objects.new("Water", mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    mat = bpy.data.materials.new("WaterMat")
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes["Principled BSDF"]
+    bsdf.inputs["Base Color"].default_value = (0.02, 0.05, 0.09, 1.0)
+    bsdf.inputs["Roughness"].default_value = 0.08
+    obj.data.materials.append(mat)
+    link_to(obj, "Terrain")
+    print(f"water: {placed} polygons placed")
+
+
+# --- Wilson Hall sculpted model --------------------------------------------------
+
+def _add_box(bm, center, size, slot_map, slot):
+    cx, cy, cz = center
+    sx, sy, sz = size[0] / 2, size[1] / 2, size[2] / 2
+    v = [bm.verts.new((cx + dx * sx, cy + dy * sy, cz + dz * sz))
+         for dx, dy, dz in ((-1, -1, -1), (1, -1, -1), (1, 1, -1), (-1, 1, -1),
+                            (-1, -1, 1), (1, -1, 1), (1, 1, 1), (-1, 1, 1))]
+    for idx in ((0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4),
+                (2, 3, 7, 6), (1, 2, 6, 5), (0, 4, 7, 3)):
+        slot_map[bm.faces.new([v[i] for i in idx])] = slot
+
+
+def build_wilson_hall(hm, style):
+    """Sculpted twin-tower model: per-floor lofted cross-sections with a
+    quadratic inward sweep, atrium gap, crossover bridges, crown slab.
+    Material slots: 0 glass curtain walls, 1 concrete, 2 roof."""
+    P = facility.WILSON_HALL_MODEL
+    H = P["floors"] * P["floor_h"]
+    L = P["length"]
+
+    def profiles(z):
+        t = z / H
+        outer = (P["half_width_top"]
+                 + (P["half_width_base"] - P["half_width_top"]) * (1 - t) ** 2)
+        gap = max(P["gap_half_min"], P["gap_half_base"] * (1 - t) ** 1.2)
+        return outer, gap
+
+    bm = bmesh.new()
+    slot_map = {}
+    for sign in (1.0, -1.0):
+        rings = []
+        for k in range(P["floors"] + 1):
+            z = k * P["floor_h"]
+            outer, gap = profiles(z)
+            y0, y1 = sign * gap, sign * outer
+            rings.append([bm.verts.new(v) for v in
+                          ((-L / 2, y0, z), (L / 2, y0, z),
+                           (L / 2, y1, z), (-L / 2, y1, z))])
+        for k in range(P["floors"]):
+            a, b = rings[k], rings[k + 1]
+            for e in range(4):
+                f = bm.faces.new((a[e], a[(e + 1) % 4],
+                                  b[(e + 1) % 4], b[e]))
+                # edges 0 (inner y0-y0) and 2 (outer y1-y1) are the big
+                # curtain-wall faces; 1 and 3 are the +-x concrete ends
+                slot_map[f] = 0 if e in (0, 2) else 1
+        slot_map[bm.faces.new(rings[0])] = 1
+        slot_map[bm.faces.new(list(reversed(rings[-1])))] = 2
+
+    for k in P["bridge_floors"]:
+        z = k * P["floor_h"]
+        _, gap = profiles(z)
+        _add_box(bm, (0.0, 0.0, z + 1.6),
+                 (P["bridge_width"], 2 * gap + 1.2, 3.2), slot_map, 1)
+    outer_top, _ = profiles(H)
+    _add_box(bm, (0.0, 0.0, H + 0.9), (L, 2 * outer_top, 1.8), slot_map, 2)
+
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mat_idx = [slot_map.get(f, 1) for f in bm.faces]
+    mesh = bpy.data.meshes.new("WilsonHallMesh")
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.validate()
+    mesh.polygons.foreach_set("material_index", mat_idx)
+
+    obj = bpy.data.objects.new("WilsonHall", mesh)
+    obj.rotation_euler = (0.0, 0.0, math.radians(90.0 - P["rotation_deg"]))
+    base = 0.0 if style == "schematic" else hm.sample(0.0, 0.0) - 1.0
+    obj.location = (0.0, 0.0, base)
+    bpy.context.scene.collection.objects.link(obj)
+    link_to(obj, "Buildings")
+
+    if style == "schematic":
+        m = emission_material("WilsonHallMat", (0.00, 0.45, 0.70),
+                              strength=1.0, mix_principled=0.75)
+        for _ in range(3):
+            obj.data.materials.append(m)
+        return
+
+    # slot 0: glass curtain wall with procedural floor bands + mullions,
+    # in Object coords so the grid survives the Z rotation
+    glass = bpy.data.materials.new("WH_Glass")
+    glass.use_nodes = True
+    nt = glass.node_tree
+    bsdf = nt.nodes["Principled BSDF"]
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(tc.outputs["Object"], sep.inputs["Vector"])
+
+    def band_mask(axis_out, period, lo, hi):
+        div = nt.nodes.new("ShaderNodeMath")
+        div.operation = "DIVIDE"
+        div.inputs[1].default_value = period
+        nt.links.new(axis_out, div.inputs[0])
+        frac = nt.nodes.new("ShaderNodeMath")
+        frac.operation = "FRACT"
+        nt.links.new(div.outputs["Value"], frac.inputs[0])
+        gt = nt.nodes.new("ShaderNodeMath")
+        gt.operation = "GREATER_THAN"
+        gt.inputs[1].default_value = lo
+        nt.links.new(frac.outputs["Value"], gt.inputs[0])
+        lt = nt.nodes.new("ShaderNodeMath")
+        lt.operation = "LESS_THAN"
+        lt.inputs[1].default_value = hi
+        nt.links.new(frac.outputs["Value"], lt.inputs[0])
+        mul = nt.nodes.new("ShaderNodeMath")
+        mul.operation = "MULTIPLY"
+        nt.links.new(gt.outputs["Value"], mul.inputs[0])
+        nt.links.new(lt.outputs["Value"], mul.inputs[1])
+        return mul.outputs["Value"]
+
+    floors = band_mask(sep.outputs["Z"], P["floor_h"], 0.10, 0.88)
+    bays = band_mask(sep.outputs["X"], 3.4, 0.06, 0.94)
+    wmask = nt.nodes.new("ShaderNodeMath")
+    wmask.operation = "MULTIPLY"
+    nt.links.new(floors, wmask.inputs[0])
+    nt.links.new(bays, wmask.inputs[1])
+    mixrgb = nt.nodes.new("ShaderNodeMix")
+    mixrgb.data_type = "RGBA"
+    nt.links.new(wmask.outputs["Value"], mixrgb.inputs["Factor"])
+    mixrgb.inputs[6].default_value = (0.20, 0.19, 0.18, 1.0)  # mullion
+    mixrgb.inputs[7].default_value = (0.01, 0.03, 0.06, 1.0)  # glass
+    nt.links.new(mixrgb.outputs[2], bsdf.inputs["Base Color"])
+    rough = nt.nodes.new("ShaderNodeMapRange")
+    rough.inputs["From Min"].default_value = 0.0
+    rough.inputs["From Max"].default_value = 1.0
+    rough.inputs["To Min"].default_value = 0.6
+    rough.inputs["To Max"].default_value = 0.12
+    nt.links.new(wmask.outputs["Value"], rough.inputs["Value"])
+    nt.links.new(rough.outputs["Result"], bsdf.inputs["Roughness"])
+    metal = nt.nodes.new("ShaderNodeMath")
+    metal.operation = "MULTIPLY"
+    metal.inputs[1].default_value = 0.25
+    nt.links.new(wmask.outputs["Value"], metal.inputs[0])
+    nt.links.new(metal.outputs["Value"], bsdf.inputs["Metallic"])
+    obj.data.materials.append(glass)
+
+    # slot 1: mottled cast concrete
+    conc = bpy.data.materials.new("WH_Concrete")
+    conc.use_nodes = True
+    nt2 = conc.node_tree
+    bsdf2 = nt2.nodes["Principled BSDF"]
+    bsdf2.inputs["Roughness"].default_value = 0.85
+    tc2 = nt2.nodes.new("ShaderNodeTexCoord")
+    noise = nt2.nodes.new("ShaderNodeTexNoise")
+    noise.inputs["Scale"].default_value = 0.08
+    noise.inputs["Detail"].default_value = 3.0
+    nt2.links.new(tc2.outputs["Object"], noise.inputs["Vector"])
+    ramp = nt2.nodes.new("ShaderNodeValToRGB")
+    ramp.color_ramp.elements[0].color = (0.50, 0.48, 0.46, 1.0)
+    ramp.color_ramp.elements[1].color = (0.60, 0.58, 0.55, 1.0)
+    nt2.links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
+    nt2.links.new(ramp.outputs["Color"], bsdf2.inputs["Base Color"])
+    obj.data.materials.append(conc)
+
+    # slot 2: roof
+    obj.data.materials.append(
+        principled_material("WH_Roof", (0.18, 0.18, 0.19), roughness=0.9))
+
+
 # --- buildings -----------------------------------------------------------------
 
-def extrude_footprint(bm, ring, base_z, height):
+def extrude_footprint(bm, ring, base_z, height, mat_index=0):
     """Add one extruded footprint into bmesh bm. Concave-safe."""
     coords = [Vector((x, y, 0.0)) for x, y in ring]
     tris = tessellate_polygon([coords])
@@ -306,22 +583,66 @@ def extrude_footprint(bm, ring, base_z, height):
     for i in range(nv):  # walls
         j = (i + 1) % nv
         try:
-            bm.faces.new((vb[i], vb[j], vt[j], vt[i]))
+            bm.faces.new((vb[i], vb[j], vt[j], vt[i])).material_index = mat_index
         except ValueError:
             pass
     for a, b, c in tris:  # cap top and bottom
         try:
-            bm.faces.new((vt[a], vt[b], vt[c]))
+            bm.faces.new((vt[a], vt[b], vt[c])).material_index = mat_index
         except ValueError:
             pass
         try:
-            bm.faces.new((vb[c], vb[b], vb[a]))
+            bm.faces.new((vb[c], vb[b], vb[a])).material_index = mat_index
         except ValueError:
             pass
     return True
 
 
-def build_buildings(hm, style, cutaway=False):
+def building_mat_index(cx, cy, height, style):
+    """Deterministic footprint-hash material slot."""
+    a, b = int(round(cx * 8)), int(round(cy * 8))
+    h = ((a * 73856093) ^ (b * 19349663)) & 0x7FFFFFFF
+    if style == "schematic":
+        return h % 3
+    if height > 12.0:
+        return 8 + h % 2  # window-band variants
+    onsite = math.hypot(cx - facility.CAMPUS_CENTER[0],
+                        cy - facility.CAMPUS_CENTER[1]) < facility.ONSITE_RADIUS
+    return (4 + h % 4) if onsite else (h % 4)
+
+
+def window_band_material(name, wall_color):
+    """Horizontal dark-glass bands by world-space Z (for taller buildings)."""
+    mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+    nt = mat.node_tree
+    bsdf = nt.nodes["Principled BSDF"]
+    bsdf.inputs["Roughness"].default_value = 0.6
+    geom = nt.nodes.new("ShaderNodeNewGeometry")
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(geom.outputs["Position"], sep.inputs["Vector"])
+    div = nt.nodes.new("ShaderNodeMath")
+    div.operation = "DIVIDE"
+    div.inputs[1].default_value = 3.2
+    nt.links.new(sep.outputs["Z"], div.inputs[0])
+    frac = nt.nodes.new("ShaderNodeMath")
+    frac.operation = "FRACT"
+    nt.links.new(div.outputs["Value"], frac.inputs[0])
+    gt = nt.nodes.new("ShaderNodeMath")
+    gt.operation = "GREATER_THAN"
+    gt.inputs[1].default_value = 0.38
+    nt.links.new(frac.outputs["Value"], gt.inputs[0])
+    mix = nt.nodes.new("ShaderNodeMix")
+    mix.data_type = "RGBA"
+    nt.links.new(gt.outputs["Value"], mix.inputs["Factor"])
+    mix.inputs[6].default_value = (0.04, 0.05, 0.07, 1.0)  # window band
+    mix.inputs[7].default_value = (*wall_color, 1.0)       # wall
+    nt.links.new(mix.outputs[2], bsdf.inputs["Base Color"])
+    mat.diffuse_color = (*wall_color, 1.0)
+    return mat
+
+
+def build_buildings(hm, style, cutaway=False, sculpt_wilson=True):
     with open(os.path.join(DATA, "buildings.geojson")) as f:
         feats = json.load(f)["features"]
 
@@ -340,36 +661,56 @@ def build_buildings(hm, style, cutaway=False):
             continue
         cx = sum(p[0] for p in ring) / len(ring)
         cy = sum(p[1] for p in ring) / len(ring)
-        if cutaway and in_cut(cx, cy) and not f["properties"].get("highlight"):
+        if f["properties"].get("highlight"):
+            wilson = (cx, cy)
+            if sculpt_wilson:
+                continue  # replaced by the sculpted model
+        elif cutaway and in_cut(cx, cy):
             continue  # don't leave buildings floating over the pit
         base = 0.0 if style == "schematic" else hm.sample(cx, cy) - 3.0
         target = bm_wh if f["properties"].get("highlight") else bm
+        mat_idx = 0 if target is bm_wh else building_mat_index(
+            cx, cy, f["properties"]["height"], style)
         if not extrude_footprint(target, ring, base,
-                                 f["properties"]["height"]):
+                                 f["properties"]["height"], mat_idx):
             skipped += 1
-        if f["properties"].get("highlight"):
-            wilson = (cx, cy)
 
-    for name, b in (("Buildings", bm), ("WilsonHall", bm_wh)):
-        mesh = bpy.data.meshes.new(name + "Mesh")
-        b.to_mesh(mesh)
-        b.free()
-        mesh.validate()
-        obj = bpy.data.objects.new(name, mesh)
-        bpy.context.scene.collection.objects.link(obj)
-        link_to(obj, "Buildings")
-        if name == "WilsonHall":
+    mesh = bpy.data.meshes.new("BuildingsMesh")
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.validate()
+    obj = bpy.data.objects.new("Buildings", mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    link_to(obj, "Buildings")
+    if style == "schematic":
+        for i, g in enumerate((0.52, 0.57, 0.62)):
             obj.data.materials.append(
-                emission_material("WilsonHallMat", (0.00, 0.45, 0.70),
-                                  strength=1.0, mix_principled=0.75))
-        else:
-            if style == "schematic":
-                obj.data.materials.append(
-                    principled_material("BuildingMat", (0.55, 0.57, 0.62)))
-            else:
-                obj.data.materials.append(
-                    principled_material("BuildingMat", (0.42, 0.40, 0.37),
-                                        roughness=0.9))
+                principled_material(f"BuildingMat{i}", (g, g, g + 0.02)))
+    else:
+        for i, c in enumerate(facility.BUILDING_PALETTE_OFFSITE):
+            obj.data.materials.append(
+                principled_material(f"BldgOff{i}", c, roughness=0.88))
+        for i, c in enumerate(facility.BUILDING_PALETTE_ONSITE):
+            obj.data.materials.append(
+                principled_material(f"BldgOn{i}", c, roughness=0.75))
+        obj.data.materials.append(
+            window_band_material("BldgWinWarm", (0.45, 0.42, 0.38)))
+        obj.data.materials.append(
+            window_band_material("BldgWinCool", (0.40, 0.43, 0.47)))
+
+    if sculpt_wilson:
+        build_wilson_hall(hm, style)
+    else:
+        mesh_wh = bpy.data.meshes.new("WilsonHallMesh")
+        bm_wh.to_mesh(mesh_wh)
+        mesh_wh.validate()
+        obj_wh = bpy.data.objects.new("WilsonHall", mesh_wh)
+        bpy.context.scene.collection.objects.link(obj_wh)
+        link_to(obj_wh, "Buildings")
+        obj_wh.data.materials.append(
+            emission_material("WilsonHallMat", (0.00, 0.45, 0.70),
+                              strength=1.0, mix_principled=0.75))
+    bm_wh.free()
     print(f"buildings: {len(feats)} footprints, {skipped} skipped")
     return wilson
 
@@ -576,9 +917,11 @@ def build_cameras(style, wilson_xy, hm):
     else:
         wx, wy = wilson_xy or (0.0, 0.0)
         wz = hm.sample(wx, wy)
+        # from the ENE along the long axis: shows the iconic end-on profile
+        # (two curved pylons + atrium slot) plus the sunlit SE glass face
         cams.append(add_camera("Cam_WilsonHall",
-                               (wx - 320, wy - 420, wz + 210),
-                               (wx, wy, wz + 40), lens=50.0))
+                               (wx + 620, wy + 190, wz + 200),
+                               (wx, wy, wz + 42), lens=45.0))
     bpy.context.scene.camera = cams[0]
     bpy.context.scene["render_cameras"] = [c.name for c in cams]
 
@@ -588,8 +931,8 @@ def build_lights(style):
     sun_data.energy = 3.0
     sun_data.angle = math.radians(1.0)
     sun = bpy.data.objects.new("Sun", sun_data)
-    # from the southwest, ~40 deg elevation
-    sun.rotation_euler = (math.radians(50.0), 0.0, math.radians(-135.0 + 180.0))
+    # from the southwest, ~33 deg elevation for stronger modeling shadows
+    sun.rotation_euler = (math.radians(57.0), 0.0, math.radians(45.0))
     bpy.context.scene.collection.objects.link(sun)
     link_to(sun, "Lights")
 
@@ -602,7 +945,7 @@ def build_lights(style):
         bg.inputs["Strength"].default_value = 0.8
     else:
         sky = world.node_tree.nodes.new("ShaderNodeTexSky")
-        sky.sun_elevation = math.radians(40.0)
+        sky.sun_elevation = math.radians(33.0)
         sky.sun_rotation = math.radians(135.0)
         sky.sun_intensity = 0.3
         world.node_tree.links.new(sky.outputs["Color"], bg.inputs["Color"])
@@ -636,6 +979,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--fast", action="store_true")
     ap.add_argument("--no-cutaway", action="store_true")
+    ap.add_argument("--no-wilson-model", action="store_true")
     args = ap.parse_args(argv)
 
     # empty scene
@@ -646,7 +990,10 @@ def main():
 
     build_terrain(hm, args.style, cutaway)
     build_boundary(hm, args.style)
-    wilson_xy = build_buildings(hm, args.style, cutaway)
+    wilson_xy = build_buildings(hm, args.style, cutaway,
+                                sculpt_wilson=not args.no_wilson_model)
+    if args.style == "realistic":
+        build_water(hm, cutaway)
     build_accelerators(hm, args.style)
     build_annotations(args.style)
     build_cameras(args.style, wilson_xy, hm)
