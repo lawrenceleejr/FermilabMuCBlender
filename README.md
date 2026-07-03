@@ -7,9 +7,21 @@ with a **10 TeV muon collider** underneath, following the Fermilab
 (RCS) acceleration chain.
 
 Everything is built headlessly in GitHub Actions and uploaded as workflow
-artifacts: two `.blend` files (a clean schematic style and a semi-realistic
-style with a quarter-disk cutaway into the geology) plus 1080p Cycles
-renders from several named cameras.
+artifacts: two `.blend` files (a dark schematic style and a semi-realistic
+golden-hour style with a quarter-disk cutaway into the geology) plus 1440p
+Cycles renders from several named cameras, graded in the compositor (AgX
+punchy look, mist-based aerial perspective, fog-glow on the machines, soft
+vignette).
+
+Each `.blend` also contains **`Cam_Tour`** — a 30 s keyframed camera
+(720 frames @ 24 fps) that tours the complex: wide reveal, dive to Wilson
+Hall, hero orbit, then a sweep over the excavated cutaway with the rings
+below. It is not rendered in CI; render it locally with
+
+```bash
+blender -b fermilab_muc_realistic.blend -a          # PNG frames
+# or -o //tour_ -F FFMPEG for a video, GPU strongly recommended
+```
 
 ## The physics layout
 

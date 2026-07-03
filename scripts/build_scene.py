@@ -771,7 +771,7 @@ def azimuth_point(ring_cfg, azimuth_deg):
 
 def build_accelerators(hm, style):
     rings = {r["name"]: r for r in facility.RINGS}
-    strength = 3.5 if style == "schematic" else 1.0
+    strength = 3.5 if style == "schematic" else 2.5  # dusk glow in realistic
     for r in facility.RINGS:
         radius = facility.ring_radius(r) + r.get("radius_offset", 0.0)
         ring_curve("Ring_" + r["name"], r["center"], radius,
@@ -851,15 +851,20 @@ def text_object(name, text, location, size, color, rotation=(0, 0, 0),
     return obj
 
 
-def build_annotations(style):
+def build_annotations(style, hm):
     cx, cy = facility.CAMPUS_CENTER
     tcol = (0.9, 0.9, 0.95) if style == "schematic" else (0.05, 0.05, 0.07)
 
+    def ground(x, y):
+        # annotations lie just above the surface: readable from above,
+        # edge-on (invisible) from ground-level and tour cameras
+        return 3.0 if style == "schematic" else hm.sample(x, y) + 3.0
+
     text_object("Title", "Fermilab 10 TeV Muon Collider (site-filler concept)",
-                (cx, cy + 3500.0, 80.0), 240.0, tcol)
+                (cx, cy + 3500.0, ground(cx, cy + 3500.0)), 240.0, tcol)
     text_object("Subtitle",
                 "arXiv:2503.23695 - schematic; rings drawn as circles",
-                (cx, cy + 3180.0, 80.0), 115.0, tcol)
+                (cx, cy + 3180.0, ground(cx, cy + 3180.0)), 115.0, tcol)
 
     # legend: swatch + label rows, below the site's south edge
     entries = [(r["label"], r["color"]) for r in facility.RINGS]
@@ -871,15 +876,16 @@ def build_annotations(style):
     row = 240.0
     for i, (label, color) in enumerate(entries):
         y = y0 - i * row
-        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(x0, y + 50.0, 40.0))
+        gz = ground(x0, y)
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(x0, y + 50.0, gz))
         sw = bpy.context.object
-        sw.scale = (130.0, 130.0, 20.0)
+        sw.scale = (130.0, 130.0, 4.0)
         sw.name = f"LegendSwatch_{i}"
         sw.data.materials.append(
             emission_material(f"LegendSwatchMat_{i}", color, strength=1.8))
         sw.visible_shadow = False
         link_to(sw, "Annotations")
-        text_object(f"LegendText_{i}", label, (x0 + 220.0, y, 40.0), 140.0,
+        text_object(f"LegendText_{i}", label, (x0 + 220.0, y, gz), 140.0,
                     tcol, align="LEFT")
 
 
@@ -905,34 +911,78 @@ def add_camera(name, location, look_at, ortho_scale=None, lens=35.0):
 def build_cameras(style, wilson_xy, hm):
     cx, cy = facility.CAMPUS_CENTER
     cams = []
-    cams.append(add_camera("Cam_Aerial", (cx - 3800, cy - 6800, 5200),
-                           (cx, cy, -350), lens=38.0))
-    # aim at the exposed cut quadrant (southeast)
+    # lower, layered oblique: pit + rings mid-frame, campus + horizon beyond
+    cams.append(add_camera("Cam_Aerial", (cx - 2400, cy - 7200, 3000),
+                           (cx + 300, cy - 200, -350), lens=44.0))
+    # low over the pit rim, wide: the cut wall drops away, rings sweep out
     cams.append(add_camera("Cam_Cutaway",
-                           (cx + 5200, cy - 5600, 2600),
-                           (cx + 900, cy - 900, -180), lens=40.0))
+                           (cx + 4300, cy - 4300, 1200),
+                           (cx + 700, cy - 700, -220), lens=28.0))
     if style == "schematic":
         cams.append(add_camera("Cam_Top", (cx, cy, 9500), (cx, cy, 0),
                                ortho_scale=13200))
     else:
         wx, wy = wilson_xy or (0.0, 0.0)
         wz = hm.sample(wx, wy)
-        # from the ENE along the long axis: shows the iconic end-on profile
-        # (two curved pylons + atrium slot) plus the sunlit SE glass face
+        # 3/4 from the ENE: end-on twin-pylon profile plus the raked glass face
         cams.append(add_camera("Cam_WilsonHall",
-                               (wx + 620, wy + 190, wz + 200),
-                               (wx, wy, wz + 42), lens=45.0))
+                               (wx + 640, wy + 140, wz + 110),
+                               (wx, wy, wz + 46), lens=55.0))
     bpy.context.scene.camera = cams[0]
     bpy.context.scene["render_cameras"] = [c.name for c in cams]
 
 
+def build_tour_camera(style, hm):
+    """Keyframed camera that tours the complex (embedded in the .blend;
+    not rendered in CI). Render with: blender -b <file> -a"""
+    sc = bpy.context.scene
+    sc.frame_start = 1
+    sc.frame_end = 720
+    sc.render.fps = 24
+
+    target = bpy.data.objects.new("TourTarget", None)
+    target.empty_display_size = 50.0
+    bpy.context.scene.collection.objects.link(target)
+    link_to(target, "Cameras")
+
+    cam_data = bpy.data.cameras.new("Cam_Tour")
+    cam_data.lens = 32.0
+    cam_data.clip_end = 100000.0
+    cam = bpy.data.objects.new("Cam_Tour", cam_data)
+    bpy.context.scene.collection.objects.link(cam)
+    link_to(cam, "Cameras")
+    con = cam.constraints.new(type="TRACK_TO")
+    con.target = target
+    con.track_axis = "TRACK_NEGATIVE_Z"
+    con.up_axis = "UP_Y"
+
+    cx, cy = facility.CAMPUS_CENTER
+    wz = 0.0 if style == "schematic" else hm.sample(0.0, 0.0)
+    # (frame, camera location, target location)
+    waypoints = [
+        (1,   (cx - 3000, cy - 8500, 4800), (cx, cy, -200)),        # wide reveal
+        (140, (-1600, -2600, 1100),         (0.0, 0.0, wz + 50)),   # dive toward Wilson Hall
+        (260, (620, 320, wz + 150),         (0.0, 0.0, wz + 45)),   # hero orbit-in
+        (360, (900, -900, wz + 420),        (1500, -300, -50)),     # rise, turn to the pit
+        (500, (cx + 2900, cy - 2900, 750),  (cx + 500, cy - 500, -200)),  # over the cut, rings below
+        (640, (cx + 700, cy - 5800, 2600),  (cx, cy, -250)),        # sweep along the south
+        (720, (cx - 3000, cy - 8500, 4800), (cx, cy, -200)),        # settle back wide
+    ]
+    for frame, loc, tgt in waypoints:
+        cam.location = loc
+        cam.keyframe_insert(data_path="location", frame=frame)
+        target.location = tgt
+        target.keyframe_insert(data_path="location", frame=frame)
+    for obj in (cam, target):
+        for fc in obj.animation_data.action.fcurves:
+            for kp in fc.keyframe_points:
+                kp.interpolation = "BEZIER"
+                kp.easing = "EASE_IN_OUT"
+
+
 def build_lights(style):
     sun_data = bpy.data.lights.new("Sun", type="SUN")
-    sun_data.energy = 3.0
-    sun_data.angle = math.radians(1.0)
     sun = bpy.data.objects.new("Sun", sun_data)
-    # from the southwest, ~33 deg elevation for stronger modeling shadows
-    sun.rotation_euler = (math.radians(57.0), 0.0, math.radians(45.0))
     bpy.context.scene.collection.objects.link(sun)
     link_to(sun, "Lights")
 
@@ -941,15 +991,99 @@ def build_lights(style):
     world.use_nodes = True
     bg = world.node_tree.nodes["Background"]
     if style == "schematic":
-        bg.inputs["Color"].default_value = (0.92, 0.93, 0.95, 1.0)
-        bg.inputs["Strength"].default_value = 0.8
+        # dark studio backdrop: glowing rings + white buildings pop
+        sun_data.energy = 3.0
+        sun_data.angle = math.radians(1.0)
+        sun.rotation_euler = (math.radians(57.0), 0.0, math.radians(45.0))
+        bg.inputs["Color"].default_value = (0.015, 0.02, 0.035, 1.0)
+        bg.inputs["Strength"].default_value = 1.0
     else:
+        # golden hour: low warm sun from the WSW, warm horizon sky; the pit
+        # falls into shadow so the emissive machines glow against dusk
+        sun_data.energy = 4.5
+        sun_data.angle = math.radians(0.8)
+        sun_data.color = (1.0, 0.87, 0.72)
+        # azimuth ~200 deg (SSW): grazing warm rake across the glass grid
+        # and the pit's north wall
+        sun.rotation_euler = (math.radians(70.0), 0.0, math.radians(20.0))
         sky = world.node_tree.nodes.new("ShaderNodeTexSky")
-        sky.sun_elevation = math.radians(33.0)
-        sky.sun_rotation = math.radians(135.0)
-        sky.sun_intensity = 0.3
+        sky.sun_elevation = math.radians(20.0)
+        sky.sun_rotation = math.radians(20.0)
+        sky.sun_intensity = 0.25
+        sky.dust_density = 2.0
         world.node_tree.links.new(sky.outputs["Color"], bg.inputs["Color"])
-        bg.inputs["Strength"].default_value = 0.6
+        bg.inputs["Strength"].default_value = 0.9
+    # mist for aerial perspective (read by the compositor)
+    world.mist_settings.start = 3000.0
+    world.mist_settings.depth = 14000.0
+    world.mist_settings.falloff = "QUADRATIC"
+
+
+def setup_compositor(style):
+    """Magazine grade: mist-based aerial perspective (realistic), fog-glow
+    on the emissive machines, and a soft vignette."""
+    sc = bpy.context.scene
+    sc.render.use_compositing = True
+    sc.use_nodes = True
+    vl = bpy.context.view_layer
+    vl.use_pass_mist = True
+    nt = sc.node_tree
+    nt.nodes.clear()
+    rl = nt.nodes.new("CompositorNodeRLayers")
+    img_out = rl.outputs["Image"]
+
+    if style == "realistic":
+        haze = nt.nodes.new("CompositorNodeMixRGB")
+        haze.blend_type = "MIX"
+        haze.inputs[2].default_value = (0.70, 0.60, 0.50, 1.0)  # warm haze
+        scale_mist = nt.nodes.new("CompositorNodeMath")
+        scale_mist.operation = "MULTIPLY"
+        scale_mist.inputs[1].default_value = 0.18
+        nt.links.new(rl.outputs["Mist"], scale_mist.inputs[0])
+        nt.links.new(scale_mist.outputs["Value"], haze.inputs["Fac"])
+        nt.links.new(img_out, haze.inputs[1])
+        img_out = haze.outputs["Image"]
+
+    glare = nt.nodes.new("CompositorNodeGlare")
+    glare.glare_type = "FOG_GLOW"
+    glare.quality = "HIGH"
+    # options moved between properties and sockets across 4.x - set both ways
+    for attr, val in (("threshold", 1.0), ("size", 8)):
+        try:
+            setattr(glare, attr, val)
+        except (AttributeError, TypeError):
+            pass
+    for sock, val in (("Threshold", 1.0), ("Size", 0.6), ("Strength", 0.12)):
+        if sock in glare.inputs:
+            try:
+                glare.inputs[sock].default_value = val
+            except (AttributeError, TypeError):
+                pass
+    nt.links.new(img_out, glare.inputs["Image"])
+    img_out = glare.outputs["Image"]
+
+    # vignette: blurred ellipse mask -> gentle corner darkening
+    mask = nt.nodes.new("CompositorNodeEllipseMask")
+    mask.width = 0.98
+    mask.height = 0.98
+    blur = nt.nodes.new("CompositorNodeBlur")
+    blur.use_relative = True
+    blur.factor_x = 65.0
+    blur.factor_y = 65.0
+    nt.links.new(mask.outputs["Mask"], blur.inputs["Image"])
+    lift = nt.nodes.new("CompositorNodeMath")
+    lift.operation = "MULTIPLY_ADD"
+    lift.inputs[1].default_value = 0.22   # mask * 0.22 + 0.78
+    lift.inputs[2].default_value = 0.78
+    nt.links.new(blur.outputs["Image"], lift.inputs[0])
+    vig = nt.nodes.new("CompositorNodeMixRGB")
+    vig.blend_type = "MULTIPLY"
+    vig.inputs["Fac"].default_value = 1.0
+    nt.links.new(img_out, vig.inputs[1])
+    nt.links.new(lift.outputs["Value"], vig.inputs[2])
+
+    comp = nt.nodes.new("CompositorNodeComposite")
+    nt.links.new(vig.outputs["Image"], comp.inputs["Image"])
 
 
 # --- main ---------------------------------------------------------------------------
@@ -962,12 +1096,19 @@ def setup_render(fast):
     sc.cycles.use_adaptive_sampling = True
     sc.cycles.use_denoising = True
     sc.cycles.denoiser = "OPENIMAGEDENOISE"
-    sc.render.resolution_x = 640 if fast else 1920
-    sc.render.resolution_y = 360 if fast else 1080
+    sc.render.resolution_x = 640 if fast else 2560
+    sc.render.resolution_y = 360 if fast else 1440
     sc.render.film_transparent = False
     style = bpy.context.scene.get("style", "")
-    sc.view_settings.view_transform = (
-        "Standard" if style == "schematic" else "Filmic")
+    if style == "schematic":
+        sc.view_settings.view_transform = "Standard"
+    else:
+        try:
+            sc.view_settings.view_transform = "AgX"
+            sc.view_settings.look = "AgX - Punchy"
+        except TypeError:
+            sc.view_settings.view_transform = "Filmic"
+            sc.view_settings.look = "High Contrast"
     sc.render.image_settings.file_format = "PNG"
 
 
@@ -995,11 +1136,13 @@ def main():
     if args.style == "realistic":
         build_water(hm, cutaway)
     build_accelerators(hm, args.style)
-    build_annotations(args.style)
+    build_annotations(args.style, hm)
     build_cameras(args.style, wilson_xy, hm)
+    build_tour_camera(args.style, hm)
     build_lights(args.style)
     bpy.context.scene["style"] = args.style
     setup_render(args.fast)
+    setup_compositor(args.style)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(args.out),
