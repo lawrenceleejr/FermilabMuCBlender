@@ -337,14 +337,18 @@ def build_boundary(hm, style):
         z = 2.0 if style == "schematic" else hm.sample(x, y) + 2.0
         p.co = (x, y, z, 1.0)
     sp.use_cyclic_u = True
-    curve.bevel_depth = 8.0
-    curve.bevel_resolution = 2
+    curve.bevel_depth = facility.BOUNDARY_RADIUS
+    curve.bevel_resolution = 3
     obj = bpy.data.objects.new("SiteBoundary", curve)
     bpy.context.scene.collection.objects.link(obj)
-    bcol = (0.75, 0.78, 0.85) if style == "schematic" else (0.12, 0.12, 0.15)
+    # bright, identical in both styles: the campus outline is a key datum
     obj.data.materials.append(
-        emission_material("BoundaryMat", bcol, strength=1.5))
-    link_to(obj, "Terrain")
+        emission_material("BoundaryMat", facility.BOUNDARY_COLOR,
+                          strength=facility.BOUNDARY_STRENGTH))
+    obj.visible_shadow = False
+    # lives with the annotations: bright and legible in the map-like views,
+    # hidden in the ground-level hero shot where it would cross the horizon
+    link_to(obj, "Annotations")
 
 
 # --- water ---------------------------------------------------------------------
@@ -463,17 +467,17 @@ def build_wilson_hall(hm, style):
                 # e==2: vertical outer face -> window strips (3)
                 # e==1,3: flat slab ends -> panel concrete (4)
                 slot_map[f] = {0: 1, 2: 3}.get(e, 4)
-                f.smooth = e == 0
+                f.smooth = e in (0, 2)
         slot_map[bm.faces.new(rings[0])] = 1
         slot_map[bm.faces.new(list(reversed(rings[-1])))] = 2
 
-        # rooftop parapet "ears" at both ends of each slab
-        outer_top, gap_top = profiles(H)
-        ymid = sign * (gap_top + outer_top) / 2.0
-        ywid = outer_top - gap_top
-        for ex in (L / 2 - P["ear_length"] / 2, -L / 2 + P["ear_length"] / 2):
-            _add_box(bm, (ex, ymid, H + P["ear_height"] / 2),
-                     (P["ear_length"], ywid, P["ear_height"]), slot_map, 1)
+        # distinctive rooftop blocks: one per pylon at each end, flanking
+        # the central slot (per reference photos)
+        bl, bw, bh = P["roof_block"]
+        _, gap_top = profiles(H)
+        for ex in (L / 2 - bl / 2 - 1.0, -L / 2 + bl / 2 + 1.0):
+            _add_box(bm, (ex, sign * (gap_top + bw / 2 + 1.0), H + bh / 2),
+                     (bl, bw, bh), slot_map, 1)
 
     # atrium glazing closing both ends (narrow slot flaring to wide base)
     for k in range(nlev):
@@ -631,6 +635,90 @@ def build_wilson_hall(hm, style):
         wall_rough=0.88, dark_rough=0.88))
 
 
+def build_flags(hm, style):
+    """Two rows of international flags lining the NE entrance approach."""
+    if style != "realistic":
+        return
+    P = facility.WILSON_HALL_MODEL
+    F = facility.FLAG_ROWS
+    ang = math.radians(90.0 - P["rotation_deg"])
+    ca, sa = math.cos(ang), math.sin(ang)
+
+    bm = bmesh.new()
+    slot_map = {}
+    idx = 0
+    x = F["x_start"]
+    while x <= F["x_end"]:
+        for sy in (1.0, -1.0):
+            lx, ly = x, sy * F["row_y"]
+            wxp = lx * ca - ly * sa
+            wyp = lx * sa + ly * ca
+            gz = hm.sample(wxp, wyp)
+            _add_box(bm, (wxp, wyp, gz + F["pole_h"] / 2),
+                     (0.22, 0.22, F["pole_h"]), slot_map, 0)
+            color_slot = 1 + (idx % len(facility.FLAG_COLORS))
+            # flag oriented roughly along the row
+            _add_box(bm, (wxp + 1.2 * ca, wyp + 1.2 * sa,
+                          gz + F["pole_h"] - 0.9),
+                     (2.4, 0.06, 1.5), slot_map, color_slot)
+            idx += 1
+        x += F["spacing"]
+
+    mat_idx = [slot_map.get(f, 0) for f in bm.faces]
+    mesh = bpy.data.meshes.new("FlagsMesh")
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.validate()
+    mesh.polygons.foreach_set("material_index", mat_idx)
+    obj = bpy.data.objects.new("Flags", mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    link_to(obj, "Buildings")
+    obj.data.materials.append(
+        principled_material("FlagPole", (0.85, 0.86, 0.88), roughness=0.4))
+    for i, c in enumerate(facility.FLAG_COLORS):
+        obj.data.materials.append(
+            principled_material(f"Flag{i}", c, roughness=0.7))
+
+
+def helen_edwards_material():
+    """Modern glass lab: vertical glazing bays with metal fins."""
+    mat = bpy.data.materials.new("HelenEdwardsGlass")
+    mat.use_nodes = True
+    nt = mat.node_tree
+    bsdf = nt.nodes["Principled BSDF"]
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(tc.outputs["Object"], sep.inputs["Vector"])
+    add = nt.nodes.new("ShaderNodeMath")
+    add.operation = "ADD"
+    nt.links.new(sep.outputs["X"], add.inputs[0])
+    nt.links.new(sep.outputs["Y"], add.inputs[1])
+    div = nt.nodes.new("ShaderNodeMath")
+    div.operation = "DIVIDE"
+    div.inputs[1].default_value = 2.8
+    nt.links.new(add.outputs["Value"], div.inputs[0])
+    frac = nt.nodes.new("ShaderNodeMath")
+    frac.operation = "FRACT"
+    nt.links.new(div.outputs["Value"], frac.inputs[0])
+    gt = nt.nodes.new("ShaderNodeMath")
+    gt.operation = "GREATER_THAN"
+    gt.inputs[1].default_value = 0.12
+    nt.links.new(frac.outputs["Value"], gt.inputs[0])
+    mix = nt.nodes.new("ShaderNodeMix")
+    mix.data_type = "RGBA"
+    nt.links.new(gt.outputs["Value"], mix.inputs["Factor"])
+    mix.inputs[6].default_value = (0.55, 0.57, 0.58, 1.0)  # metal fin
+    mix.inputs[7].default_value = (0.03, 0.07, 0.10, 1.0)  # glass
+    nt.links.new(mix.outputs[2], bsdf.inputs["Base Color"])
+    rough = nt.nodes.new("ShaderNodeMapRange")
+    rough.inputs["To Min"].default_value = 0.45
+    rough.inputs["To Max"].default_value = 0.10
+    nt.links.new(gt.outputs["Value"], rough.inputs["Value"])
+    nt.links.new(rough.outputs["Result"], bsdf.inputs["Roughness"])
+    bsdf.inputs["Metallic"].default_value = 0.4
+    return mat
+
+
 # --- buildings -----------------------------------------------------------------
 
 def extrude_footprint(bm, ring, base_z, height, mat_index=0):
@@ -711,8 +799,10 @@ def build_buildings(hm, style, cutaway=False, sculpt_wilson=True):
 
     bm = bmesh.new()
     bm_wh = bmesh.new()
+    bm_hel = bmesh.new()
     skipped = 0
     wilson = None
+    hx, hy = facility.HELEN_EDWARDS_CENTROID
     for f in feats:
         ring = f["geometry"]["coordinates"][0]
         # dedupe consecutive points
@@ -731,12 +821,30 @@ def build_buildings(hm, style, cutaway=False, sculpt_wilson=True):
         elif cutaway and in_cut(cx, cy):
             continue  # don't leave buildings floating over the pit
         base = 0.0 if style == "schematic" else hm.sample(cx, cy) - 3.0
+        if math.hypot(cx - hx, cy - hy) < 40.0:
+            # Helen Edwards Laboratory (former IERC): modern glass lab
+            extrude_footprint(bm_hel, ring, base,
+                              facility.HELEN_EDWARDS_HEIGHT, 0)
+            continue
         target = bm_wh if f["properties"].get("highlight") else bm
         mat_idx = 0 if target is bm_wh else building_mat_index(
             cx, cy, f["properties"]["height"], style)
         if not extrude_footprint(target, ring, base,
                                  f["properties"]["height"], mat_idx):
             skipped += 1
+
+    mesh_hel = bpy.data.meshes.new("HelenEdwardsMesh")
+    bm_hel.to_mesh(mesh_hel)
+    bm_hel.free()
+    mesh_hel.validate()
+    obj_hel = bpy.data.objects.new("HelenEdwardsLab", mesh_hel)
+    bpy.context.scene.collection.objects.link(obj_hel)
+    link_to(obj_hel, "Buildings")
+    if style == "schematic":
+        obj_hel.data.materials.append(
+            principled_material("HelenEdwardsMat", (0.35, 0.55, 0.65)))
+    else:
+        obj_hel.data.materials.append(helen_edwards_material())
 
     mesh = bpy.data.meshes.new("BuildingsMesh")
     bm.to_mesh(mesh)
@@ -989,9 +1097,11 @@ def build_cameras(style, wilson_xy, hm):
         wz = hm.sample(wx, wy)
         # near end-on from the SSW (sunlit side): the iconic wishbone pylons
         # + atrium glass arch, slight 3/4 so the striped long face reads
+        # from the NE: the entrance approach with the flag rows and the
+        # Helen Edwards Laboratory in frame
         cams.append(add_camera("Cam_WilsonHall",
-                               (wx - 151, wy - 389, wz + 22),
-                               (wx, wy, wz + 40), lens=42.0))
+                               (wx + 336, wy + 284, wz + 20),
+                               (wx, wy, wz + 40), lens=40.0))
     bpy.context.scene.camera = cams[0]
     bpy.context.scene["render_cameras"] = [c.name for c in cams]
 
@@ -1067,9 +1177,9 @@ def build_lights(style):
         sun_data.energy = 6.0
         sun_data.angle = math.radians(0.6)
         sun_data.color = (1.0, 0.60, 0.34)
-        # azimuth ~200 deg (SSW), ~8 deg elevation: true golden hour -
-        # long shadows, amber rake on the glass grid and the pit walls
-        sun.rotation_euler = (math.radians(82.0), 0.0, math.radians(20.0))
+        # low SE sun, ~8 deg elevation: golden-hour rake on the entrance
+        # end, the flags, and the pit walls
+        sun.rotation_euler = (math.radians(82.0), 0.0, math.radians(45.0))
         sky = world.node_tree.nodes.new("ShaderNodeTexSky")
         sky.sun_elevation = math.radians(8.0)
         sky.sun_rotation = math.radians(20.0)
@@ -1180,6 +1290,7 @@ def main():
                                 sculpt_wilson=not args.no_wilson_model)
     if args.style == "realistic":
         build_water(hm, cutaway)
+    build_flags(hm, args.style)
     build_accelerators(hm, args.style)
     build_annotations(args.style, hm)
     build_cameras(args.style, wilson_xy, hm)

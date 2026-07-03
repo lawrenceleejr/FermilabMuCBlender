@@ -208,16 +208,39 @@ WILSON_HALL_MODEL = {
     "floors": 16,
     "floor_h": 4.6,            # => 73.6 m total
     "length": 96.0,            # long axis (local X before rotation)
-    "half_width": 22.0,        # outer face half-width (vertical, constant)
-    "base_flare": 4.0,         # outer face flares this much at grade...
-    "flare_height": 10.0,      # ...dying out by this height
+    "half_width": 22.0,        # outer face half-width high up
+    "base_flare": 9.0,         # outer faces sweep out this much at grade...
+    "flare_height": 28.0,      # ...over the lower third (per photos)
     "gap_half_top": 3.4,       # atrium half-gap at roof (narrow slot)
     "gap_half_base": 15.0,     # atrium half-gap at grade (wishbone stance)
     "sweep_exp": 2.5,          # inner-face sweep exponent
-    "ear_height": 3.6,         # rooftop parapet blocks at the four corners
-    "ear_length": 12.0,
+    # distinctive rooftop blocks: two per pylon end (stair/elevator overruns)
+    "roof_block": (8.0, 6.0, 4.5),   # length, width, height
     "rotation_deg": 38.0,      # long-axis bearing east of north
 }
+
+# Helen Edwards Laboratory (former IERC, 2023): modern glass lab adjacent
+# east of Wilson Hall; OSM has the footprint (unnamed) at ~(69, 11) ENU.
+HELEN_EDWARDS_CENTROID = (69.1, 11.4)
+HELEN_EDWARDS_HEIGHT = 20.0
+
+# International flag rows lining the NE (main entrance) approach,
+# in Wilson Hall LOCAL coordinates (rotated with the building).
+FLAG_ROWS = {
+    "x_start": 62.0, "x_end": 158.0, "spacing": 12.0,
+    "row_y": 13.5, "pole_h": 10.5,
+}
+FLAG_COLORS = [
+    (0.80, 0.10, 0.12), (0.95, 0.95, 0.95), (0.05, 0.25, 0.60),
+    (0.05, 0.50, 0.20), (0.95, 0.75, 0.05), (0.85, 0.45, 0.05),
+    (0.30, 0.05, 0.45), (0.00, 0.55, 0.55),
+]
+
+# Site boundary emphasis (Tufte: the campus outline is a key spatial datum
+# - encode it once, brightly, identically in both styles)
+BOUNDARY_COLOR = (0.0, 0.55, 1.0)
+BOUNDARY_RADIUS = 12.0
+BOUNDARY_STRENGTH = 4.0
 
 # --- Building material palettes (linear RGB) ----------------------------------
 BUILDING_PALETTE_OFFSITE = [
