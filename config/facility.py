@@ -208,14 +208,24 @@ WILSON_HALL_MODEL = {
     "floors": 16,
     "floor_h": 4.6,            # => 73.6 m total
     "length": 96.0,            # long axis (local X before rotation)
-    "half_width": 22.0,        # outer face half-width high up
-    "base_flare": 9.0,         # outer faces sweep out this much at grade...
-    "flare_height": 28.0,      # ...over the lower third (per photos)
-    "gap_half_top": 3.4,       # atrium half-gap at roof (narrow slot)
-    "gap_half_base": 15.0,     # atrium half-gap at grade (wishbone stance)
-    "sweep_exp": 2.5,          # inner-face sweep exponent
-    # distinctive rooftop blocks: two per pylon end (stair/elevator overruns)
-    "roof_block": (8.0, 6.0, 4.5),   # length, width, height
+    # end-silhouette profile, measured off the frontal reference photo:
+    # chalice shape - widest at the roof, gentle concave taper to a waist
+    # at ~39% height, then flaring outward to the plinth
+    "w_top_half": 23.0,        # outer half-width at roof
+    "w_waist_half": 20.9,      # outer half-width at the waist
+    "t_waist": 0.39,           # waist height fraction
+    "upper_exp": 1.4,          # concavity of the upper taper
+    "flare": 5.0,              # extra half-width gained by t = t_waist-flare_span
+    "flare_span": 0.29,
+    "flare_exp": 1.7,
+    # atrium: wide near-constant slot (~26% of total width) down to ~38%
+    # height, then the wishbone sweep out to the glass entrance base
+    "slot_half": 5.9,
+    "t_slot": 0.38,
+    "gap_base_half": 15.5,
+    "gap_exp": 1.3,
+    # distinctive rooftop blocks flanking the slot (stair/elevator overruns)
+    "roof_block": (9.0, 8.5, 4.5),   # length, width, height
     "rotation_deg": 38.0,      # long-axis bearing east of north
 }
 

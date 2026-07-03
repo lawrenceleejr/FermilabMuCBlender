@@ -438,18 +438,26 @@ def build_wilson_hall(hm, style):
 
     def profiles(z):
         t = z / H
-        outer = P["half_width"]
-        if z < P["flare_height"]:
-            outer += P["base_flare"] * (1.0 - z / P["flare_height"]) ** 2
-        gap = (P["gap_half_top"]
-               + (P["gap_half_base"] - P["gap_half_top"])
-               * (1 - t) ** P["sweep_exp"])
+        if t >= P["t_waist"]:
+            u = (t - P["t_waist"]) / (1.0 - P["t_waist"])
+            outer = (P["w_waist_half"]
+                     + (P["w_top_half"] - P["w_waist_half"])
+                     * u ** P["upper_exp"])
+        else:
+            u = (P["t_waist"] - t) / P["flare_span"]
+            outer = P["w_waist_half"] + P["flare"] * u ** P["flare_exp"]
+        if t >= P["t_slot"]:
+            gap = P["slot_half"]
+        else:
+            u = (P["t_slot"] - t) / P["t_slot"]
+            gap = (P["slot_half"]
+                   + (P["gap_base_half"] - P["slot_half"]) * u ** P["gap_exp"])
         return outer, gap
 
     bm = bmesh.new()
     slot_map = {}
-    nlev = 2 * P["floors"]
-    levels = [k * P["floor_h"] / 2.0 for k in range(nlev + 1)]
+    nlev = 4 * P["floors"]  # quarter-floor loft: smooth high-curvature sweep
+    levels = [k * P["floor_h"] / 4.0 for k in range(nlev + 1)]
     for sign in (1.0, -1.0):
         rings = []
         for z in levels:
@@ -475,8 +483,8 @@ def build_wilson_hall(hm, style):
         # the central slot (per reference photos)
         bl, bw, bh = P["roof_block"]
         _, gap_top = profiles(H)
-        for ex in (L / 2 - bl / 2 - 1.0, -L / 2 + bl / 2 + 1.0):
-            _add_box(bm, (ex, sign * (gap_top + bw / 2 + 1.0), H + bh / 2),
+        for ex in (L / 2 - bl / 2 - 0.5, -L / 2 + bl / 2 + 0.5):
+            _add_box(bm, (ex, sign * (gap_top + bw / 2), H + bh / 2),
                      (bl, bw, bh), slot_map, 1)
 
     # atrium glazing closing both ends (narrow slot flaring to wide base)
@@ -580,7 +588,7 @@ def build_wilson_hall(hm, style):
     # slot 0: atrium glazing - strong vertical mullions (bays across Y),
     # faint floor transoms, dark green-blue glass
     def glass_mask(nt, sep):
-        bays = band_nodes(nt, sep.outputs["Y"], 2.4, 0.05, 0.95)
+        bays = band_nodes(nt, sep.outputs["Y"], 1.5, 0.06, 0.94)
         floors = band_nodes(nt, sep.outputs["Z"], fh, 0.04, 0.97)
         mul = nt.nodes.new("ShaderNodeMath")
         mul.operation = "MULTIPLY"
@@ -590,8 +598,8 @@ def build_wilson_hall(hm, style):
 
     obj.data.materials.append(masked_material(
         "WH_AtriumGlass", glass_mask,
-        (0.10, 0.10, 0.10), (0.01, 0.04, 0.04),
-        wall_rough=0.5, dark_rough=0.08, metallic=0.3))
+        (0.05, 0.05, 0.05), (0.004, 0.009, 0.012),
+        wall_rough=0.55, dark_rough=0.10, metallic=0.15))
 
     # slot 1: board-formed concrete (curved inner faces, ears, abutments)
     conc = bpy.data.materials.new("WH_Concrete")
@@ -625,9 +633,9 @@ def build_wilson_hall(hm, style):
         (0.58, 0.56, 0.52), (0.02, 0.04, 0.05),
         wall_rough=0.85, dark_rough=0.12, metallic=0.2))
 
-    # slot 4: flat slab ends - precast panels with thin horizontal joints
+    # slot 4: flat slab ends - precast panels, thin joints every two floors
     def joint_mask(nt, sep):
-        return band_nodes(nt, sep.outputs["Z"], fh, 0.0, 0.035)
+        return band_nodes(nt, sep.outputs["Z"], 2 * fh, 0.0, 0.018)
 
     obj.data.materials.append(masked_material(
         "WH_EndPanels", joint_mask,
