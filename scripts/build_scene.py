@@ -431,31 +431,51 @@ def build_wilson_hall(hm, style):
     def profiles(z):
         t = z / H
         outer = (P["half_width_top"]
-                 + (P["half_width_base"] - P["half_width_top"]) * (1 - t) ** 2)
+                 + (P["half_width_base"] - P["half_width_top"])
+                 * (1 - t) ** P["sweep_exp"])
         gap = max(P["gap_half_min"], P["gap_half_base"] * (1 - t) ** 1.2)
         return outer, gap
 
     bm = bmesh.new()
     slot_map = {}
+    # loft at half-floor steps and shade the curved faces smooth so the
+    # sweep reads as a continuous surface, not 16 facets
+    nlev = 2 * P["floors"]
+    levels = [k * P["floor_h"] / 2.0 for k in range(nlev + 1)]
     for sign in (1.0, -1.0):
         rings = []
-        for k in range(P["floors"] + 1):
-            z = k * P["floor_h"]
+        for z in levels:
             outer, gap = profiles(z)
             y0, y1 = sign * gap, sign * outer
             rings.append([bm.verts.new(v) for v in
                           ((-L / 2, y0, z), (L / 2, y0, z),
                            (L / 2, y1, z), (-L / 2, y1, z))])
-        for k in range(P["floors"]):
+        for k in range(nlev):
             a, b = rings[k], rings[k + 1]
             for e in range(4):
                 f = bm.faces.new((a[e], a[(e + 1) % 4],
                                   b[(e + 1) % 4], b[e]))
-                # edges 0 (inner y0-y0) and 2 (outer y1-y1) are the big
-                # curtain-wall faces; 1 and 3 are the +-x concrete ends
-                slot_map[f] = 0 if e in (0, 2) else 1
+                # e==2: swept outer face -> concrete w/ window strips (3);
+                # e==0: atrium-side face -> glass (0); e==1,3: concrete ends
+                slot_map[f] = 3 if e == 2 else (0 if e == 0 else 1)
+                f.smooth = e in (0, 2)
         slot_map[bm.faces.new(rings[0])] = 1
         slot_map[bm.faces.new(list(reversed(rings[-1])))] = 2
+
+    # the iconic glazed arch closing the atrium at both ends: glass walls
+    # spanning the tapering gap between the towers' inner faces
+    for k in range(nlev):
+        z0, z1 = levels[k], levels[k + 1]
+        _, g0 = profiles(z0)
+        _, g1 = profiles(z1)
+        for sx in (L / 2, -L / 2):
+            va = bm.verts.new((sx, -g0, z0))
+            vb = bm.verts.new((sx, g0, z0))
+            vc = bm.verts.new((sx, g1, z1))
+            vd = bm.verts.new((sx, -g1, z1))
+            f = bm.faces.new((va, vb, vc, vd))
+            slot_map[f] = 0
+            f.smooth = True
 
     for k in P["bridge_floors"]:
         z = k * P["floor_h"]
@@ -483,7 +503,7 @@ def build_wilson_hall(hm, style):
     if style == "schematic":
         m = emission_material("WilsonHallMat", (0.00, 0.45, 0.70),
                               strength=1.0, mix_principled=0.75)
-        for _ in range(3):
+        for _ in range(4):
             obj.data.materials.append(m)
         return
 
@@ -566,6 +586,49 @@ def build_wilson_hall(hm, style):
     # slot 2: roof
     obj.data.materials.append(
         principled_material("WH_Roof", (0.18, 0.18, 0.19), roughness=0.9))
+
+    # slot 3: swept outer faces - cast concrete with recessed horizontal
+    # window strips per floor
+    bands = bpy.data.materials.new("WH_ConcreteBands")
+    bands.use_nodes = True
+    nt3 = bands.node_tree
+    bsdf3 = nt3.nodes["Principled BSDF"]
+    tc3 = nt3.nodes.new("ShaderNodeTexCoord")
+    sep3 = nt3.nodes.new("ShaderNodeSeparateXYZ")
+    nt3.links.new(tc3.outputs["Object"], sep3.inputs["Vector"])
+    div3 = nt3.nodes.new("ShaderNodeMath")
+    div3.operation = "DIVIDE"
+    div3.inputs[1].default_value = P["floor_h"]
+    nt3.links.new(sep3.outputs["Z"], div3.inputs[0])
+    frac3 = nt3.nodes.new("ShaderNodeMath")
+    frac3.operation = "FRACT"
+    nt3.links.new(div3.outputs["Value"], frac3.inputs[0])
+    gt3 = nt3.nodes.new("ShaderNodeMath")
+    gt3.operation = "GREATER_THAN"
+    gt3.inputs[1].default_value = 0.52
+    nt3.links.new(frac3.outputs["Value"], gt3.inputs[0])
+    lt3 = nt3.nodes.new("ShaderNodeMath")
+    lt3.operation = "LESS_THAN"
+    lt3.inputs[1].default_value = 0.92
+    nt3.links.new(frac3.outputs["Value"], lt3.inputs[0])
+    strip = nt3.nodes.new("ShaderNodeMath")
+    strip.operation = "MULTIPLY"
+    nt3.links.new(gt3.outputs["Value"], strip.inputs[0])
+    nt3.links.new(lt3.outputs["Value"], strip.inputs[1])
+    mix3 = nt3.nodes.new("ShaderNodeMix")
+    mix3.data_type = "RGBA"
+    nt3.links.new(strip.outputs["Value"], mix3.inputs["Factor"])
+    mix3.inputs[6].default_value = (0.55, 0.52, 0.48, 1.0)  # concrete
+    mix3.inputs[7].default_value = (0.02, 0.03, 0.05, 1.0)  # window strip
+    nt3.links.new(mix3.outputs[2], bsdf3.inputs["Base Color"])
+    rough3 = nt3.nodes.new("ShaderNodeMapRange")
+    rough3.inputs["From Min"].default_value = 0.0
+    rough3.inputs["From Max"].default_value = 1.0
+    rough3.inputs["To Min"].default_value = 0.85
+    rough3.inputs["To Max"].default_value = 0.15
+    nt3.links.new(strip.outputs["Value"], rough3.inputs["Value"])
+    nt3.links.new(rough3.outputs["Result"], bsdf3.inputs["Roughness"])
+    obj.data.materials.append(bands)
 
 
 # --- buildings -----------------------------------------------------------------
@@ -1000,19 +1063,19 @@ def build_lights(style):
     else:
         # golden hour: low warm sun from the WSW, warm horizon sky; the pit
         # falls into shadow so the emissive machines glow against dusk
-        sun_data.energy = 4.5
-        sun_data.angle = math.radians(0.8)
-        sun_data.color = (1.0, 0.87, 0.72)
-        # azimuth ~200 deg (SSW): grazing warm rake across the glass grid
-        # and the pit's north wall
-        sun.rotation_euler = (math.radians(70.0), 0.0, math.radians(20.0))
+        sun_data.energy = 6.0
+        sun_data.angle = math.radians(0.6)
+        sun_data.color = (1.0, 0.60, 0.34)
+        # azimuth ~200 deg (SSW), ~8 deg elevation: true golden hour -
+        # long shadows, amber rake on the glass grid and the pit walls
+        sun.rotation_euler = (math.radians(82.0), 0.0, math.radians(20.0))
         sky = world.node_tree.nodes.new("ShaderNodeTexSky")
-        sky.sun_elevation = math.radians(20.0)
+        sky.sun_elevation = math.radians(8.0)
         sky.sun_rotation = math.radians(20.0)
-        sky.sun_intensity = 0.25
-        sky.dust_density = 2.0
+        sky.sun_intensity = 0.3
+        sky.dust_density = 1.5
         world.node_tree.links.new(sky.outputs["Color"], bg.inputs["Color"])
-        bg.inputs["Strength"].default_value = 0.9
+        bg.inputs["Strength"].default_value = 0.55
     # mist for aerial perspective (read by the compositor)
     world.mist_settings.start = 3000.0
     world.mist_settings.depth = 14000.0
@@ -1035,10 +1098,10 @@ def setup_compositor(style):
     if style == "realistic":
         haze = nt.nodes.new("CompositorNodeMixRGB")
         haze.blend_type = "MIX"
-        haze.inputs[2].default_value = (0.70, 0.60, 0.50, 1.0)  # warm haze
+        haze.inputs[2].default_value = (0.72, 0.52, 0.34, 1.0)  # golden haze
         scale_mist = nt.nodes.new("CompositorNodeMath")
         scale_mist.operation = "MULTIPLY"
-        scale_mist.inputs[1].default_value = 0.18
+        scale_mist.inputs[1].default_value = 0.26
         nt.links.new(rl.outputs["Mist"], scale_mist.inputs[0])
         nt.links.new(scale_mist.outputs["Value"], haze.inputs["Fac"])
         nt.links.new(img_out, haze.inputs[1])
@@ -1053,7 +1116,7 @@ def setup_compositor(style):
             setattr(glare, attr, val)
         except (AttributeError, TypeError):
             pass
-    for sock, val in (("Threshold", 1.0), ("Size", 0.6), ("Strength", 0.12)):
+    for sock, val in (("Threshold", 1.0), ("Size", 0.45), ("Strength", 0.08)):
         if sock in glare.inputs:
             try:
                 glare.inputs[sock].default_value = val
@@ -1062,28 +1125,8 @@ def setup_compositor(style):
     nt.links.new(img_out, glare.inputs["Image"])
     img_out = glare.outputs["Image"]
 
-    # vignette: blurred ellipse mask -> gentle corner darkening
-    mask = nt.nodes.new("CompositorNodeEllipseMask")
-    mask.width = 0.98
-    mask.height = 0.98
-    blur = nt.nodes.new("CompositorNodeBlur")
-    blur.use_relative = True
-    blur.factor_x = 65.0
-    blur.factor_y = 65.0
-    nt.links.new(mask.outputs["Mask"], blur.inputs["Image"])
-    lift = nt.nodes.new("CompositorNodeMath")
-    lift.operation = "MULTIPLY_ADD"
-    lift.inputs[1].default_value = 0.22   # mask * 0.22 + 0.78
-    lift.inputs[2].default_value = 0.78
-    nt.links.new(blur.outputs["Image"], lift.inputs[0])
-    vig = nt.nodes.new("CompositorNodeMixRGB")
-    vig.blend_type = "MULTIPLY"
-    vig.inputs["Fac"].default_value = 1.0
-    nt.links.new(img_out, vig.inputs[1])
-    nt.links.new(lift.outputs["Value"], vig.inputs[2])
-
     comp = nt.nodes.new("CompositorNodeComposite")
-    nt.links.new(vig.outputs["Image"], comp.inputs["Image"])
+    nt.links.new(img_out, comp.inputs["Image"])
 
 
 # --- main ---------------------------------------------------------------------------
@@ -1109,6 +1152,7 @@ def setup_render(fast):
         except TypeError:
             sc.view_settings.view_transform = "Filmic"
             sc.view_settings.look = "High Contrast"
+        sc.view_settings.exposure = -0.35  # darker, moodier frames
     sc.render.image_settings.file_format = "PNG"
 
 

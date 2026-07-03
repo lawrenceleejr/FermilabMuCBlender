@@ -205,9 +205,11 @@ WILSON_HALL_MODEL = {
     "floors": 16,
     "floor_h": 4.6,            # => 73.6 m total
     "length": 97.0,            # long axis (local X before rotation)
-    "half_width_base": 45.0,   # outer wall half-width at grade
-    "half_width_top": 12.0,    # outer wall half-width at roof
-    "gap_half_base": 8.0,      # atrium half-gap at grade (16 m slot)
+    "half_width_base": 32.0,   # outer wall half-width at grade
+    "half_width_top": 10.0,    # outer wall half-width at roof
+    "sweep_exp": 2.4,          # outer-wall sweep exponent (higher = more
+                               # dramatic flare at the base)
+    "gap_half_base": 7.0,      # atrium half-gap at grade (14 m slot)
     "gap_half_min": 0.7,       # towers nearly touch at the top
     "rotation_deg": 38.0,      # long-axis bearing east of north
     "bridge_floors": (7, 9, 11, 13, 15),
