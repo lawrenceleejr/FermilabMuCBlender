@@ -216,7 +216,8 @@ WILSON_HALL_MODEL = {
     "w_top_half": 22.0,        # outer half-width at roof
     "w_waist_half": 19.5,      # outer half-width at the waist (~12% pinch)
     "t_waist": 0.40,           # waist height fraction
-    "upper_exp": 1.5,          # concavity of the upper taper
+    "upper_exp": 2.2,          # taper curvature (measured from the top:
+                               # >1 means vertical walls at the roof)
     "flare": 4.5,              # base flare: slightly wider than the roof
     "flare_span": 0.30,
     "flare_exp": 1.7,
@@ -238,11 +239,11 @@ WILSON_HALL_MODEL = {
 HELEN_EDWARDS_CENTROID = (69.1, 11.4)
 HELEN_EDWARDS_HEIGHT = 20.0
 
-# International flag rows lining the NE (main entrance) approach,
-# in Wilson Hall LOCAL coordinates (rotated with the building).
-FLAG_ROWS = {
-    "x_start": 62.0, "x_end": 158.0, "spacing": 12.0,
-    "row_y": 13.5, "pole_h": 10.5,
+# Single row of international flags crossing in front of the NE (main)
+# entrance, in Wilson Hall LOCAL coordinates (rotated with the building).
+FLAG_ROW = {
+    "x": 78.0, "y_span": 54.0, "spacing": 6.0, "pole_h": 10.5,
+    "flag_l": 2.7, "flag_h": 1.8,
 }
 FLAG_COLORS = [
     (0.80, 0.10, 0.12), (0.95, 0.95, 0.95), (0.05, 0.25, 0.60),

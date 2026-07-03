@@ -439,9 +439,11 @@ def build_wilson_hall(hm, style):
     def profiles(z):
         t = z / H
         if t >= P["t_waist"]:
-            u = (t - P["t_waist"]) / (1.0 - P["t_waist"])
-            outer = (P["w_waist_half"]
-                     + (P["w_top_half"] - P["w_waist_half"])
+            # zero slope at the roof: the outer walls rise parallel at the
+            # top and only curve inward approaching the waist
+            u = (1.0 - t) / (1.0 - P["t_waist"])
+            outer = (P["w_top_half"]
+                     - (P["w_top_half"] - P["w_waist_half"])
                      * u ** P["upper_exp"])
         else:
             u = (P["t_waist"] - t) / P["flare_span"]
@@ -654,34 +656,55 @@ def build_wilson_hall(hm, style):
 
 
 def build_flags(hm, style):
-    """Two rows of international flags lining the NE entrance approach."""
+    """Single row of international flags rippling in the wind, crossing
+    in front of the main (NE) entrance as in the reference photos."""
     if style != "realistic":
         return
     P = facility.WILSON_HALL_MODEL
-    F = facility.FLAG_ROWS
+    F = facility.FLAG_ROW
     ang = math.radians(90.0 - P["rotation_deg"])
     ca, sa = math.cos(ang), math.sin(ang)
 
+    def to_world(lx, ly, lz):
+        return (lx * ca - ly * sa, lx * sa + ly * ca, lz)
+
     bm = bmesh.new()
     slot_map = {}
+    nu, nv = 10, 4  # flag cloth grid
+    fl, fh_ = F["flag_l"], F["flag_h"]
     idx = 0
-    x = F["x_start"]
-    while x <= F["x_end"]:
-        for sy in (1.0, -1.0):
-            lx, ly = x, sy * F["row_y"]
-            wxp = lx * ca - ly * sa
-            wyp = lx * sa + ly * ca
-            gz = hm.sample(wxp, wyp)
-            _add_box(bm, (wxp, wyp, gz + F["pole_h"] / 2),
-                     (0.22, 0.22, F["pole_h"]), slot_map, 0)
-            color_slot = 1 + (idx % len(facility.FLAG_COLORS))
-            # flag oriented roughly along the row
-            _add_box(bm, (wxp + 1.2 * ca, wyp + 1.2 * sa,
-                          gz + F["pole_h"] - 0.9),
-                     (2.4, 0.06, 1.5), slot_map, color_slot)
-            idx += 1
-        x += F["spacing"]
+    ly = -F["y_span"]
+    while ly <= F["y_span"] + 0.01:
+        wxp, wyp, _ = to_world(F["x"], ly, 0.0)
+        gz = hm.sample(wxp, wyp)
+        _add_box(bm, (wxp, wyp, gz + F["pole_h"] / 2),
+                 (0.18, 0.18, F["pole_h"]), slot_map, 0)
 
+        # flag cloth: ripples along its length, blowing along the row
+        phase = idx * 1.7
+        color_slot = 1 + (idx % len(facility.FLAG_COLORS))
+        grid = []
+        for i in range(nu):
+            u = i / (nu - 1)
+            ripple = 0.30 * math.sin(u * 5.0 + phase) * u
+            droop = 0.22 * u * u
+            col = []
+            for j in range(nv):
+                v = j / (nv - 1)
+                lz = gz + F["pole_h"] - 0.25 - v * fh_ - droop
+                col.append(bm.verts.new(
+                    to_world(F["x"] + ripple, ly + 0.12 + u * fl, lz)))
+            grid.append(col)
+        for i in range(nu - 1):
+            for j in range(nv - 1):
+                f = bm.faces.new((grid[i][j], grid[i + 1][j],
+                                  grid[i + 1][j + 1], grid[i][j + 1]))
+                slot_map[f] = color_slot
+                f.smooth = True
+        idx += 1
+        ly += F["spacing"]
+
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     mat_idx = [slot_map.get(f, 0) for f in bm.faces]
     mesh = bpy.data.meshes.new("FlagsMesh")
     bm.to_mesh(mesh)
@@ -694,8 +717,10 @@ def build_flags(hm, style):
     obj.data.materials.append(
         principled_material("FlagPole", (0.85, 0.86, 0.88), roughness=0.4))
     for i, c in enumerate(facility.FLAG_COLORS):
-        obj.data.materials.append(
-            principled_material(f"Flag{i}", c, roughness=0.7))
+        mat = principled_material(f"Flag{i}", c, roughness=0.85)
+        mat.node_tree.nodes["Principled BSDF"].inputs[
+            "Sheen Weight"].default_value = 0.4
+        obj.data.materials.append(mat)
 
 
 def helen_edwards_material():
