@@ -487,9 +487,14 @@ def build_wilson_hall(hm, style):
             _add_box(bm, (ex, sign * (gap_top + bw / 2), H + bh / 2),
                      (bl, bw, bh), slot_map, 1)
 
-    # atrium glazing closing both ends (narrow slot flaring to wide base)
+    # atrium glazing closing both ends (wide base sweeping into the slot);
+    # it tops out below the roof - the notch above stays open to the sky
+    z_glass_top = P["t_glass_top"] * H
     for k in range(nlev):
         z0, z1 = levels[k], levels[k + 1]
+        if z0 >= z_glass_top:
+            break
+        z1 = min(z1, z_glass_top)
         _, g0 = profiles(z0)
         _, g1 = profiles(z1)
         for sx in (L / 2, -L / 2):
@@ -500,6 +505,11 @@ def build_wilson_hall(hm, style):
             f = bm.faces.new((va, vb, vc, vd))
             slot_map[f] = 0
             f.smooth = True
+    # concrete transom beam capping the glass at each end
+    _, g_cap = profiles(z_glass_top)
+    for sx in (L / 2 - 1.2, -L / 2 + 1.2):
+        _add_box(bm, (sx, 0.0, z_glass_top + 0.8),
+                 (2.4, 2 * g_cap, 1.6), slot_map, 1)
 
     # entrance canopies + splayed abutment walls at grade
     _, gap_base = profiles(0.0)

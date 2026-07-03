@@ -211,17 +211,21 @@ WILSON_HALL_MODEL = {
     # end-silhouette profile, measured off the frontal reference photo:
     # chalice shape - widest at the roof, gentle concave taper to a waist
     # at ~39% height, then flaring outward to the plinth
-    "w_top_half": 23.0,        # outer half-width at roof
-    "w_waist_half": 20.9,      # outer half-width at the waist
-    "t_waist": 0.39,           # waist height fraction
-    "upper_exp": 1.4,          # concavity of the upper taper
-    "flare": 5.0,              # extra half-width gained by t = t_waist-flare_span
-    "flare_span": 0.29,
+    # (apparent widths from the photo corrected for the upward-view
+    # perspective: the roof is farther from the camera than the waist)
+    "w_top_half": 22.0,        # outer half-width at roof
+    "w_waist_half": 19.5,      # outer half-width at the waist (~12% pinch)
+    "t_waist": 0.40,           # waist height fraction
+    "upper_exp": 1.5,          # concavity of the upper taper
+    "flare": 4.5,              # base flare: slightly wider than the roof
+    "flare_span": 0.30,
     "flare_exp": 1.7,
     # atrium: wide near-constant slot (~26% of total width) down to ~38%
-    # height, then the wishbone sweep out to the glass entrance base
-    "slot_half": 5.9,
+    # height, then the wishbone sweep out to the glass entrance base;
+    # the glazing tops out below the roof - the notch above is open sky
+    "slot_half": 5.7,
     "t_slot": 0.38,
+    "t_glass_top": 0.82,
     "gap_base_half": 15.5,
     "gap_exp": 1.3,
     # distinctive rooftop blocks flanking the slot (stair/elevator overruns)
