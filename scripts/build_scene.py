@@ -438,16 +438,11 @@ def build_wilson_hall(hm, style):
 
     def profiles(z):
         t = z / H
-        if t >= P["t_waist"]:
-            # zero slope at the roof: the outer walls rise parallel at the
-            # top and only curve inward approaching the waist
-            u = (1.0 - t) / (1.0 - P["t_waist"])
-            outer = (P["w_top_half"]
-                     - (P["w_top_half"] - P["w_waist_half"])
-                     * u ** P["upper_exp"])
-        else:
-            u = (P["t_waist"] - t) / P["flare_span"]
-            outer = P["w_waist_half"] + P["flare"] * u ** P["flare_exp"]
+        # parallel walls above t_flare; accelerating outward flare below
+        outer = P["w_top_half"]
+        if t < P["t_flare"]:
+            u = (P["t_flare"] - t) / P["t_flare"]
+            outer += P["flare_A"] * u ** P["flare_p"]
         if t >= P["t_slot"]:
             gap = P["slot_half"]
         else:
@@ -519,8 +514,8 @@ def build_wilson_hall(hm, style):
         _add_box(bm, (sx * (L / 2 + 4.0), 0.0, 4.6),
                  (9.0, 2 * gap_base * 0.8, 0.9), slot_map, 2)
         for sy in (1.0, -1.0):
-            _add_box(bm, (sx * (L / 2 + 14.0), sy * (gap_base + 4.0), 1.8),
-                     (26.0, 3.0, 3.6), slot_map, 1)
+            _add_box(bm, (sx * (L / 2 + 10.0), sy * (gap_base + 3.0), 1.4),
+                     (18.0, 2.6, 2.8), slot_map, 1)
 
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     mat_idx = [slot_map.get(f, 1) for f in bm.faces]
@@ -610,8 +605,8 @@ def build_wilson_hall(hm, style):
 
     obj.data.materials.append(masked_material(
         "WH_AtriumGlass", glass_mask,
-        (0.05, 0.05, 0.05), (0.004, 0.009, 0.012),
-        wall_rough=0.55, dark_rough=0.10, metallic=0.15))
+        (0.02, 0.02, 0.025), (0.004, 0.010, 0.014),
+        wall_rough=0.42, dark_rough=0.04, metallic=0.5))
 
     # slot 1: board-formed concrete (curved inner faces, ears, abutments)
     conc = bpy.data.materials.new("WH_Concrete")

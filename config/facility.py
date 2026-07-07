@@ -211,20 +211,17 @@ WILSON_HALL_MODEL = {
     # end-silhouette profile, measured off the frontal reference photo:
     # chalice shape - widest at the roof, gentle concave taper to a waist
     # at ~39% height, then flaring outward to the plinth
-    # (apparent widths from the photo corrected for the upward-view
-    # perspective: the roof is farther from the camera than the waist)
-    "w_top_half": 22.0,        # outer half-width at roof
-    "w_waist_half": 19.5,      # outer half-width at the waist (~12% pinch)
-    "t_waist": 0.40,           # waist height fraction
-    "upper_exp": 2.2,          # taper curvature (measured from the top:
-                               # >1 means vertical walls at the roof)
-    "flare": 4.5,              # base flare: slightly wider than the roof
-    "flare_span": 0.30,
-    "flare_exp": 1.7,
-    # atrium: wide near-constant slot (~26% of total width) down to ~38%
-    # height, then the wishbone sweep out to the glass entrance base;
-    # the glazing tops out below the roof - the notch above is open sky
-    "slot_half": 5.7,
+    # profile fitted numerically to the frontal photo's extracted
+    # silhouette with perspective correction: the outer walls are
+    # PARALLEL (constant width) from the roof down to ~55% height, then
+    # flare outward with gentle acceleration to a wide stance at grade
+    "w_top_half": 23.0,        # outer half-width, roof down to t_flare
+    "t_flare": 0.55,           # flare onset height fraction
+    "flare_A": 10.0,           # additional half-width at grade
+    "flare_p": 1.25,           # flare exponent (near-linear, slight accel)
+    # atrium: near-constant slot (~22-24% of total width); the glazing
+    # tops out at ~82% height - the notch above is open sky
+    "slot_half": 5.1,
     "t_slot": 0.38,
     "t_glass_top": 0.82,
     "gap_base_half": 15.5,
@@ -242,13 +239,15 @@ HELEN_EDWARDS_HEIGHT = 20.0
 # Single row of international flags crossing in front of the NE (main)
 # entrance, in Wilson Hall LOCAL coordinates (rotated with the building).
 FLAG_ROW = {
-    "x": 78.0, "y_span": 54.0, "spacing": 6.0, "pole_h": 10.5,
-    "flag_l": 2.7, "flag_h": 1.8,
+    "x": 84.0, "y_span": 42.0, "spacing": 5.0, "pole_h": 9.0,
+    "flag_l": 1.9, "flag_h": 1.15,
 }
+# muted national-flag palette (slightly desaturated so they don't read as
+# neon squares at distance)
 FLAG_COLORS = [
-    (0.80, 0.10, 0.12), (0.95, 0.95, 0.95), (0.05, 0.25, 0.60),
-    (0.05, 0.50, 0.20), (0.95, 0.75, 0.05), (0.85, 0.45, 0.05),
-    (0.30, 0.05, 0.45), (0.00, 0.55, 0.55),
+    (0.62, 0.12, 0.14), (0.85, 0.85, 0.86), (0.10, 0.22, 0.48),
+    (0.12, 0.42, 0.22), (0.80, 0.66, 0.14), (0.72, 0.40, 0.12),
+    (0.28, 0.12, 0.38), (0.10, 0.46, 0.48),
 ]
 
 # Site boundary emphasis (Tufte: the campus outline is a key spatial datum
