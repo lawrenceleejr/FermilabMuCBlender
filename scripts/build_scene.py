@@ -141,7 +141,9 @@ def build_terrain(hm, style, cutaway):
         link_to(obj, "Terrain")
         return obj
 
-    stride = 1  # full 512 grid; the cut rim needs the resolution
+    stride = 2  # 256 grid: keeps the .blend small; gentle relief + the
+    #             imagery drape carry the detail, so the coarser cut rim
+    #             is not noticeable
     z = hm.z[::stride, ::stride]
     n = z.shape[0]
     xs = hm.x0 + np.arange(0, hm.n, stride) * hm.dx
