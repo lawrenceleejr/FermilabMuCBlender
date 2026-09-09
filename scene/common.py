@@ -103,7 +103,7 @@ def link(tree, a, b):
     tree.links.new(a, b)
 
 
-def math(tree, op, a=None, b=None, *, value_a=None, value_b=None, clamp=False):
+def nmath(tree, op, a=None, b=None, *, value_a=None, value_b=None, clamp=False):
     n = tree.nodes.new("ShaderNodeMath")
     n.operation = op
     n.use_clamp = clamp
@@ -126,8 +126,10 @@ def mix_color(tree, fac, a, b, blend="MIX"):
     for target, val in ((sock_in(n, "Factor_Float"), fac), (sock_in(n, "A_Color"), a), (sock_in(n, "B_Color"), b)):
         if isinstance(val, bpy.types.NodeSocket):
             tree.links.new(val, target)
+        elif isinstance(val, (int, float)):
+            target.default_value = val
         else:
-            target.default_value = val if len(val) == 4 else (*val, 1.0)
+            target.default_value = tuple(val) if len(val) == 4 else (*val, 1.0)
     return n, sock_out(n, "Result_Color")
 
 
@@ -279,7 +281,7 @@ def pbr_material(
 
     if "Roughness" in maps:
         r = img(maps["Roughness"], True)
-        m = math(nt, "MULTIPLY", r.outputs["Color"], value_b=roughness_mult, clamp=True)
+        m = nmath(nt, "MULTIPLY", r.outputs["Color"], value_b=roughness_mult, clamp=True)
         nt.links.new(m.outputs[0], bsdf.inputs["Roughness"])
     else:
         bsdf.inputs["Roughness"].default_value = 0.8 * roughness_mult

@@ -61,22 +61,22 @@ def build_world(hdri_path: str, *, strength=0.12, rotation_deg=0.0, stars=True, 
         wn = nt.nodes.new("ShaderNodeTexWhiteNoise")
         wn.noise_dimensions = "3D"
         nt.links.new(snap.outputs["Vector"], wn.inputs["Vector"])
-        thr = C.math(nt, "SUBTRACT", wn.outputs["Value"], value_b=0.9982)
-        thr = C.math(nt, "MULTIPLY", thr.outputs[0], value_b=1.0 / 0.0018, clamp=True)
-        thr = C.math(nt, "POWER", thr.outputs[0], value_b=2.5)
+        thr = C.nmath(nt, "SUBTRACT", wn.outputs["Value"], value_b=0.9982)
+        thr = C.nmath(nt, "MULTIPLY", thr.outputs[0], value_b=1.0 / 0.0018, clamp=True)
+        thr = C.nmath(nt, "POWER", thr.outputs[0], value_b=2.5)
         # only above the horizon, and only where the sky itself is dark
         sep = nt.nodes.new("ShaderNodeSeparateXYZ")
         nt.links.new(tc.outputs["Generated"], sep.inputs["Vector"])
-        up = C.math(nt, "GREATER_THAN", sep.outputs["Z"], value_b=0.03)
+        up = C.nmath(nt, "GREATER_THAN", sep.outputs["Z"], value_b=0.03)
         lum = nt.nodes.new("ShaderNodeRGBToBW")
         nt.links.new(sky_scaled, lum.inputs["Color"])
-        dark = C.math(nt, "MULTIPLY", lum.outputs["Val"], value_b=25.0, clamp=True)
-        dark = C.math(nt, "SUBTRACT", value_a=1.0, b=dark.outputs[0])
-        s = C.math(nt, "MULTIPLY", thr.outputs[0], up.outputs[0])
-        s = C.math(nt, "MULTIPLY", s.outputs[0], dark.outputs[0])
-        s = C.math(nt, "MULTIPLY", s.outputs[0], value_b=star_strength)
+        dark = C.nmath(nt, "MULTIPLY", lum.outputs["Val"], value_b=25.0, clamp=True)
+        dark = C.nmath(nt, "SUBTRACT", value_a=1.0, b=dark.outputs[0])
+        s = C.nmath(nt, "MULTIPLY", thr.outputs[0], up.outputs[0])
+        s = C.nmath(nt, "MULTIPLY", s.outputs[0], dark.outputs[0])
+        s = C.nmath(nt, "MULTIPLY", s.outputs[0], value_b=star_strength)
         # slight colour variety (blue-white .. warm)
-        tint_k = C.math(nt, "MULTIPLY_ADD", wn.outputs["Value"], value_b=4000.0)
+        tint_k = C.nmath(nt, "MULTIPLY_ADD", wn.outputs["Value"], value_b=4000.0)
         tint_k.inputs[2].default_value = 4500.0
         star_col = C.blackbody(nt, tint_k.outputs[0])
         _, star_rgb = C.mix_color(nt, 1.0, star_col, (1, 1, 1, 1), "MULTIPLY")
@@ -90,17 +90,32 @@ def build_world(hdri_path: str, *, strength=0.12, rotation_deg=0.0, stars=True, 
     bg.inputs["Strength"].default_value = 1.0
     nt.links.new(bg.outputs["Background"], out.inputs["Surface"])
 
-    if haze_density > 0:
-        vol = nt.nodes.new("ShaderNodeVolumePrincipled")
-        vol.inputs["Density"].default_value = haze_density
-        vol.inputs["Anisotropy"].default_value = 0.35
-        vol.inputs["Color"].default_value = (0.72, 0.82, 1.0, 1.0)
-        nt.links.new(vol.outputs["Volume"], out.inputs["Volume"])
-    world.cycles.volume_sampling = "EQUIANGULAR"
+    # NOTE: no World volume -- Cycles treats it as infinite, which attenuates the
+    # background and sun lamps to zero. Aerial haze lives in build_haze() instead.
     return world
 
 
-def build_ground_fog(col, *, center=(900.0, -450.0), size=(9000.0, 9000.0), height=110.0, density=1.6e-3, scale_height=17.0, patch_scale=260.0, anisotropy=0.55, seed=3.0):
+def build_haze(col, *, density=3.5e-5, size=80000.0, height=1800.0, anisotropy=0.35):
+    """Homogeneous haze in a huge shallow box: distant ground fades into the sky,
+    while rays leaving through the top still see the sky and stars."""
+    mat = bpy.data.materials.new("aerial_haze")
+    mat.use_nodes = True
+    nt = mat.node_tree
+    nt.nodes.remove(nt.nodes["Principled BSDF"])
+    out = nt.nodes["Material Output"]
+    vol = nt.nodes.new("ShaderNodeVolumePrincipled")
+    vol.inputs["Density"].default_value = density
+    vol.inputs["Anisotropy"].default_value = anisotropy
+    vol.inputs["Color"].default_value = (0.72, 0.82, 1.0, 1.0)
+    nt.links.new(vol.outputs["Volume"], out.inputs["Volume"])
+    mat.cycles.volume_sampling = "EQUIANGULAR"
+    bm = C.box_bmesh(size, size, height)
+    obj = C.bmesh_object("aerial_haze", bm, col=col, material=mat, location=(0.0, 0.0, -1.0))
+    obj.visible_shadow = False
+    return obj
+
+
+def build_ground_fog(col, *, center=(900.0, -450.0), size=(9000.0, 9000.0), height=140.0, density=3.5e-3, scale_height=22.0, patch_scale=260.0, anisotropy=0.55, seed=3.0):
     """Box volume: exponential height falloff x noise pools. Camera may be inside."""
     mat = bpy.data.materials.new("ground_fog")
     mat.use_nodes = True
@@ -112,8 +127,8 @@ def build_ground_fog(col, *, center=(900.0, -450.0), size=(9000.0, 9000.0), heig
     nt.links.new(tc.outputs["Object"], sep.inputs["Vector"])  # object at z=0 => Object z == world z
 
     # exp(-z / H)
-    zn = C.math(nt, "DIVIDE", sep.outputs["Z"], value_b=-scale_height)
-    ex = C.math(nt, "EXPONENT", zn.outputs[0])
+    zn = C.nmath(nt, "DIVIDE", sep.outputs["Z"], value_b=-scale_height)
+    ex = C.nmath(nt, "EXPONENT", zn.outputs[0])
     # pools: two octaves of noise remapped to [0.15, 1.6]
     n1 = nt.nodes.new("ShaderNodeTexNoise")
     n1.inputs["Scale"].default_value = 1.0 / patch_scale
@@ -122,18 +137,18 @@ def build_ground_fog(col, *, center=(900.0, -450.0), size=(9000.0, 9000.0), heig
     n1.noise_dimensions = "4D"
     n1.inputs["W"].default_value = seed
     nt.links.new(tc.outputs["Object"], n1.inputs["Vector"])
-    pool = C.math(nt, "MULTIPLY_ADD", n1.outputs["Fac"], value_b=2.4)
+    pool = C.nmath(nt, "MULTIPLY_ADD", n1.outputs["Fac"], value_b=2.4)
     pool.inputs[2].default_value = -0.45
-    pool = C.math(nt, "MAXIMUM", pool.outputs[0], value_b=0.12)
+    pool = C.nmath(nt, "MAXIMUM", pool.outputs[0], value_b=0.12)
     n2 = nt.nodes.new("ShaderNodeTexNoise")
     n2.inputs["Scale"].default_value = 1.0 / (patch_scale * 6.0)
     n2.inputs["Detail"].default_value = 2.0
     nt.links.new(tc.outputs["Object"], n2.inputs["Vector"])
-    big = C.math(nt, "MULTIPLY_ADD", n2.outputs["Fac"], value_b=1.4)
+    big = C.nmath(nt, "MULTIPLY_ADD", n2.outputs["Fac"], value_b=1.4)
     big.inputs[2].default_value = 0.3
-    d = C.math(nt, "MULTIPLY", ex.outputs[0], pool.outputs[0])
-    d = C.math(nt, "MULTIPLY", d.outputs[0], big.outputs[0])
-    d = C.math(nt, "MULTIPLY", d.outputs[0], value_b=density)
+    d = C.nmath(nt, "MULTIPLY", ex.outputs[0], pool.outputs[0])
+    d = C.nmath(nt, "MULTIPLY", d.outputs[0], big.outputs[0])
+    d = C.nmath(nt, "MULTIPLY", d.outputs[0], value_b=density)
 
     vol = nt.nodes.new("ShaderNodeVolumePrincipled")
     nt.links.new(d.outputs[0], vol.inputs["Density"])
@@ -151,11 +166,12 @@ def build_ground_fog(col, *, center=(900.0, -450.0), size=(9000.0, 9000.0), heig
     return obj
 
 
-def add_moon(col, *, azimuth_deg=62.0, elevation_deg=22.0, distance=32000.0, energy=0.10, kelvin=4300, disc_strength=30.0):
-    """Moon: emissive disc at `distance` (angular size 0.53 deg) and a sun lamp."""
+def add_moon(col, *, azimuth_deg=62.0, elevation_deg=9.0, distance=32000.0, energy=0.45, kelvin=4300, disc_strength=15.0, angular_deg=0.9):
+    """Moon: emissive disc at `distance` (angular size `angular_deg`; the real moon
+    is 0.53 deg, a touch larger reads better on a cover) and a matching sun lamp."""
     d = C.direction_from(azimuth_deg, elevation_deg)
-    r = math.tan(math.radians(0.53 / 2)) * distance
-    mat = C.emissive_material("moon", C.kelvin_rgb(5200), disc_strength)
+    r = math.tan(math.radians(angular_deg / 2)) * distance
+    mat = C.emissive_material("moon", C.kelvin_rgb(4200), disc_strength)
     disc = C.disk_mesh("moon_disc", (0.0, 0.0), r, z=0.0, n=64, col=col, material=mat)
     disc.location = d * distance
     C.aim(disc, (0.0, 0.0, 0.0))

@@ -39,7 +39,7 @@ def y_inner(t: float) -> float:
 # --------------------------------------------------------------------------- #
 # materials
 # --------------------------------------------------------------------------- #
-def facade_material(concrete_tex="Concrete034_2K-JPG", *, lit_fraction=0.72, window_emission=7.0):
+def facade_material(concrete_tex="Concrete034_2K-JPG", *, lit_fraction=0.80, window_emission=2.2):
     """Concrete + ribbon windows driven by object-space position.
 
     Window band: 22 %..75 % of each floor height. Panes 3 m wide with thin
@@ -92,36 +92,36 @@ def facade_material(concrete_tex="Concrete034_2K-JPG", *, lit_fraction=0.72, win
     nrm = nt.nodes.new("ShaderNodeSeparateXYZ")
     nt.links.new(geo.outputs["Normal"], nrm.inputs["Vector"])
 
-    zf = C.math(nt, "DIVIDE", pos.outputs["Z"], value_b=FLOOR_H)
-    floor_idx = C.math(nt, "FLOOR", zf.outputs[0])
-    frac = C.math(nt, "FRACT", zf.outputs[0])
-    band_lo = C.math(nt, "GREATER_THAN", frac.outputs[0], value_b=0.22)
-    band_hi = C.math(nt, "LESS_THAN", frac.outputs[0], value_b=0.75)
-    band = C.math(nt, "MULTIPLY", band_lo.outputs[0], band_hi.outputs[0])
+    zf = C.nmath(nt, "DIVIDE", pos.outputs["Z"], value_b=FLOOR_H)
+    floor_idx = C.nmath(nt, "FLOOR", zf.outputs[0])
+    frac = C.nmath(nt, "FRACT", zf.outputs[0])
+    band_lo = C.nmath(nt, "GREATER_THAN", frac.outputs[0], value_b=0.22)
+    band_hi = C.nmath(nt, "LESS_THAN", frac.outputs[0], value_b=0.75)
+    band = C.nmath(nt, "MULTIPLY", band_lo.outputs[0], band_hi.outputs[0])
 
     # facade-parallel coordinate: x on N/S faces, y on E/W ends
-    ny_abs = C.math(nt, "ABSOLUTE", nrm.outputs["Y"])
-    is_ns = C.math(nt, "GREATER_THAN", ny_abs.outputs[0], value_b=0.5)
+    ny_abs = C.nmath(nt, "ABSOLUTE", nrm.outputs["Y"])
+    is_ns = C.nmath(nt, "GREATER_THAN", ny_abs.outputs[0], value_b=0.5)
     _, u = C.mix_float(nt, is_ns.outputs[0], pos.outputs["Y"], pos.outputs["X"])
-    uf = C.math(nt, "DIVIDE", u, value_b=3.0)
-    pane_idx = C.math(nt, "FLOOR", uf.outputs[0])
-    ufr = C.math(nt, "FRACT", uf.outputs[0])
-    m_lo = C.math(nt, "GREATER_THAN", ufr.outputs[0], value_b=0.035)
-    m_hi = C.math(nt, "LESS_THAN", ufr.outputs[0], value_b=0.965)
-    pane_open = C.math(nt, "MULTIPLY", m_lo.outputs[0], m_hi.outputs[0])
+    uf = C.nmath(nt, "DIVIDE", u, value_b=3.0)
+    pane_idx = C.nmath(nt, "FLOOR", uf.outputs[0])
+    ufr = C.nmath(nt, "FRACT", uf.outputs[0])
+    m_lo = C.nmath(nt, "GREATER_THAN", ufr.outputs[0], value_b=0.035)
+    m_hi = C.nmath(nt, "LESS_THAN", ufr.outputs[0], value_b=0.965)
+    pane_open = C.nmath(nt, "MULTIPLY", m_lo.outputs[0], m_hi.outputs[0])
 
     # ends (E/W) get sparse windows; roof none
-    nx_abs = C.math(nt, "ABSOLUTE", nrm.outputs["X"])
-    is_end = C.math(nt, "GREATER_THAN", nx_abs.outputs[0], value_b=0.5)
-    nz_up = C.math(nt, "GREATER_THAN", nrm.outputs["Z"], value_b=0.5)
-    not_roof = C.math(nt, "SUBTRACT", value_a=1.0, b=nz_up.outputs[0])
+    nx_abs = C.nmath(nt, "ABSOLUTE", nrm.outputs["X"])
+    is_end = C.nmath(nt, "GREATER_THAN", nx_abs.outputs[0], value_b=0.5)
+    nz_up = C.nmath(nt, "GREATER_THAN", nrm.outputs["Z"], value_b=0.5)
+    not_roof = C.nmath(nt, "SUBTRACT", value_a=1.0, b=nz_up.outputs[0])
 
     # per-pane hash
     comb = nt.nodes.new("ShaderNodeCombineXYZ")
     nt.links.new(floor_idx.outputs[0], comb.inputs["X"])
     nt.links.new(pane_idx.outputs[0], comb.inputs["Y"])
     nt.links.new(is_ns.outputs[0], comb.inputs["Z"])
-    side = C.math(nt, "MULTIPLY_ADD", nrm.outputs["Y"], value_b=7.0)
+    side = C.nmath(nt, "MULTIPLY_ADD", nrm.outputs["Y"], value_b=7.0)
     side.inputs[2].default_value = 13.0
     comb2 = nt.nodes.new("ShaderNodeVectorMath")
     comb2.operation = "ADD"
@@ -139,18 +139,28 @@ def facade_material(concrete_tex="Concrete034_2K-JPG", *, lit_fraction=0.72, win
     wn2.inputs["W"].default_value = 7.31
 
     # end walls: only ~25 % of panes are windows at all
-    end_keep = C.math(nt, "GREATER_THAN", wn2.outputs["Value"], value_b=0.75)
+    end_keep = C.nmath(nt, "GREATER_THAN", wn2.outputs["Value"], value_b=0.75)
     _, pane_exists = C.mix_float(nt, is_end.outputs[0], 1.0, end_keep.outputs[0])
 
-    window = C.math(nt, "MULTIPLY", band.outputs[0], pane_open.outputs[0])
-    window = C.math(nt, "MULTIPLY", window.outputs[0], pane_exists)
-    window = C.math(nt, "MULTIPLY", window.outputs[0], not_roof.outputs[0])
+    window = C.nmath(nt, "MULTIPLY", band.outputs[0], pane_open.outputs[0])
+    window = C.nmath(nt, "MULTIPLY", window.outputs[0], pane_exists)
+    window = C.nmath(nt, "MULTIPLY", window.outputs[0], not_roof.outputs[0])
 
-    lit = C.math(nt, "GREATER_THAN", wn.outputs["Value"], value_b=1.0 - lit_fraction)
+    # whole floors are lit or dark (hash of floor+side), then a few panes per lit floor are off
+    comb_f = nt.nodes.new("ShaderNodeCombineXYZ")
+    nt.links.new(floor_idx.outputs[0], comb_f.inputs["X"])
+    nt.links.new(side.outputs[0], comb_f.inputs["Y"])
+    nt.links.new(nrm.outputs["X"], comb_f.inputs["Z"])
+    wn_f = nt.nodes.new("ShaderNodeTexWhiteNoise")
+    wn_f.noise_dimensions = "3D"
+    nt.links.new(comb_f.outputs["Vector"], wn_f.inputs["Vector"])
+    floor_lit = C.nmath(nt, "GREATER_THAN", wn_f.outputs["Value"], value_b=0.22)
+    pane_lit = C.nmath(nt, "GREATER_THAN", wn.outputs["Value"], value_b=1.0 - lit_fraction)
+    lit = C.nmath(nt, "MULTIPLY", floor_lit.outputs[0], pane_lit.outputs[0])
     # brightness + colour temperature per office
-    bright = C.math(nt, "MULTIPLY_ADD", wn2.outputs["Value"], value_b=0.9)
+    bright = C.nmath(nt, "MULTIPLY_ADD", wn2.outputs["Value"], value_b=0.9)
     bright.inputs[2].default_value = 0.45
-    kel = C.math(nt, "MULTIPLY_ADD", wn.outputs["Value"], value_b=1500.0)
+    kel = C.nmath(nt, "MULTIPLY_ADD", wn.outputs["Value"], value_b=1500.0)
     kel.inputs[2].default_value = 2700.0
     warm = C.blackbody(nt, kel.outputs[0])
 
@@ -162,7 +172,7 @@ def facade_material(concrete_tex="Concrete034_2K-JPG", *, lit_fraction=0.72, win
     glass.inputs["Specular IOR Level"].default_value = 0.6
     em = nt.nodes.new("ShaderNodeEmission")
     nt.links.new(warm, em.inputs["Color"])
-    strength = C.math(nt, "MULTIPLY", bright.outputs[0], value_b=window_emission)
+    strength = C.nmath(nt, "MULTIPLY", bright.outputs[0], value_b=window_emission)
     nt.links.new(strength.outputs[0], em.inputs["Strength"])
     # lit windows: emission + a little glossy reflection on top
     add = nt.nodes.new("ShaderNodeAddShader")
@@ -230,7 +240,7 @@ def _atrium_glass(name, x, mat, col):
 
 def _balconies(col):
     """Lit floor edges inside the atrium (what you see glowing through the glass)."""
-    mat = C.emissive_material("wh_balcony_glow", C.kelvin_rgb(3000), 9.0)
+    mat = C.emissive_material("wh_balcony_glow", C.kelvin_rgb(3000), 3.5)
     bm = bmesh.new()
     for f in range(1, FLOORS):
         z = f * FLOOR_H + 0.25
@@ -301,5 +311,5 @@ def build(col: bpy.types.Collection, *, floodlights=True):
     # interior atrium glow
     for i, z in enumerate((14.0, 34.0, 54.0)):
         for x in (-LENGTH / 2 + 8.0, LENGTH / 2 - 8.0):
-            C.point_light(f"wh_atrium_l{i}_{'e' if x > 0 else 'w'}", (x, 0.0, z), power=5000, kelvin=3000, radius=2.0, col=col)
+            C.point_light(f"wh_atrium_l{i}_{'e' if x > 0 else 'w'}", (x, 0.0, z), power=3000, kelvin=3000, radius=2.0, col=col)
     return north

@@ -116,21 +116,23 @@ def build_rings(col, prairie, water):
     # Main Injector berm (slightly oval)
     C.ring_mesh("main_injector_berm", MI_C, MI_RX, BERM_PROFILE, ry=MI_RY, segments=360, col=col, material=prairie)
     # faint amber marker along the Tevatron crest: the reused tunnel
-    tev_line = C.emissive_material("tevatron_tunnel_glow", (1.0, 0.62, 0.30), 2.5, camera_strength=6.0)
+    tev_line = C.emissive_material("tevatron_tunnel_glow", (1.0, 0.62, 0.30), 0.5, camera_strength=1.6)
     C.tube_mesh("tevatron_tunnel_line", C.circle_points(TEV_C, TEV_R, n=480, z=6.6), 0.9, sides=6, col=col, material=tev_line, closed=True)
 
 
 def build_collider(col, concrete):
     """The proposed muon collider: 10 km luminous ring, two detector halls,
     and the proton-driver linac feeding the western crossing."""
-    core = C.emissive_material("collider_beam", COLLIDER_COLOR, 14.0, camera_strength=60.0)
+    core = C.emissive_material("collider_beam", COLLIDER_COLOR, 5.0, camera_strength=22.0)
     C.tube_mesh("muon_collider_ring", C.circle_points(MC_C, MC_R, n=900, z=2.2), 2.6, sides=12, col=col, material=core, closed=True)
     # soft outer sheath (dimmer, wider) gives the line body without blowing out
-    sheath = C.emissive_material("collider_sheath", (0.45, 0.80, 1.0), 1.2, camera_strength=3.0)
+    sheath = C.emissive_material("collider_sheath", (0.45, 0.80, 1.0), 0.35, camera_strength=0.9)
     C.tube_mesh("muon_collider_sheath", C.circle_points(MC_C, MC_R, n=900, z=2.2), 5.0, sides=12, col=col, material=sheath, closed=True)
 
-    hall_glow = C.emissive_material("hall_glow", COLLIDER_COLOR, 6.0, camera_strength=18.0)
-    white = C.emissive_material("hall_white", LED_WHITE, 20.0)
+    hall_glow = C.emissive_material("hall_glow", COLLIDER_COLOR, 3.0, camera_strength=10.0)
+    white = C.emissive_material("hall_white", LED_WHITE, 12.0)
+    lamp_me = C.sphere_mesh_data("hall_lamp_m", 0.5)
+    lamp_me.materials.append(white)
     for i, ang in enumerate(MC_IP_ANGLES):
         x, y, _ = _mc_point(ang)
         hall = C.bmesh_object(f"detector_hall_{i}", C.cylinder_bmesh(24.0, 26.0, n=64), col=col, material=concrete, location=(x, y, 0))
@@ -139,10 +141,10 @@ def build_collider(col, concrete):
         C.box_object(f"detector_hall_annex_{i}", (60.0, 30.0, 12.0), (x + 55.0, y, 0), col=col, material=concrete)
         for k in range(6):
             a = 2 * math.pi * k / 6
-            C.bmesh_object(f"hall_lamp_{i}_{k}", C.sphere_mesh_data(f"hall_lamp_{i}_{k}_m", 0.5), col=col, material=white, location=(x + 34 * math.cos(a), y + 34 * math.sin(a), 8.0))
-        C.point_light(f"hall_light_{i}", (x, y, 40.0), power=60000, kelvin=6500, radius=6.0, col=col)
+            C.instance(f"hall_lamp_{i}_{k}", lamp_me, col=col, location=(x + 34 * math.cos(a), y + 34 * math.sin(a), 8.0))
+        C.point_light(f"hall_light_{i}", (x, y, 40.0), power=30000, kelvin=6500, radius=6.0, col=col)
 
-    linac = C.emissive_material("linac_beam", (0.85, 0.95, 1.0), 4.0, camera_strength=12.0)
+    linac = C.emissive_material("linac_beam", (0.85, 0.95, 1.0), 1.5, camera_strength=5.0)
     (x0, y0), (x1, y1) = LINAC
     C.tube_mesh("proton_driver_linac", [(x0, y0, 1.8), (x1, y1, 1.8)], 1.4, sides=8, col=col, material=linac)
     C.box_object("target_hall", (40.0, 18.0, 10.0), (x0 + 0.62 * (x1 - x0), y0 + 22.0, 0), col=col, material=concrete)
@@ -201,8 +203,8 @@ def build_roads(col, asphalt):
 
 
 def _lamp_factory(col):
-    sodium = C.emissive_material("lamp_sodium", SODIUM, 40.0, camera_strength=90.0)
-    led = C.emissive_material("lamp_led", LED_WHITE, 30.0, camera_strength=70.0)
+    sodium = C.emissive_material("lamp_sodium", SODIUM, 22.0, camera_strength=24.0)
+    led = C.emissive_material("lamp_led", LED_WHITE, 16.0, camera_strength=20.0)
     pole = C.flat_material("lamp_pole", (0.05, 0.05, 0.05), roughness=0.6)
     head = C.sphere_mesh_data("lamp_head", 0.42)
     pole_bm = C.cylinder_bmesh(0.12, 9.0, n=6)
@@ -217,8 +219,12 @@ def _lamp_factory(col):
     bpy.data.meshes.remove(head)
     counter = [0]
 
+    jit = random.Random(23)
+
     def lamp(x, y, kind="sodium"):
         counter[0] += 1
+        x += jit.uniform(-1.5, 1.5)
+        y += jit.uniform(-1.5, 1.5)
         C.instance(f"lamp_pole_{counter[0]}", pole_me, col=col, location=(x, y, 0.1))
         C.instance(f"lamp_{counter[0]}", head_s if kind == "sodium" else head_l, col=col, location=(x, y, 9.2))
 
@@ -231,9 +237,9 @@ def build_street_lights(col):
     for i, x in enumerate(range(-1000, -330, 46)):
         lamp(x, 62.0 + (7.0 if i % 2 else -7.0), "sodium")
     # Wilson Hall west parking lot grid
-    for x in range(-330, -120, 34):
-        for y in range(-105, 106, 42):
-            lamp(x + (17 if (y // 42) % 2 else 0), y, "led" if (x + y) % 3 == 0 else "sodium")
+    for x in range(-330, -120, 42):
+        for y in range(-105, 106, 52):
+            lamp(x + (21 if (y // 52) % 2 else 0), y, "led" if (x + y) % 3 == 0 else "sodium")
     # plaza / pond edge
     for y in (-40.0, 0.0, 40.0):
         lamp(70.0, y, "led")
@@ -265,38 +271,38 @@ def _lit_box_material(name, base, *, lit_color, lit_strength=5.0, band=(0.35, 0.
     nt.links.new(tc.outputs["Generated"], pos.inputs["Vector"])  # 0..1 over the box
     nrm = nt.nodes.new("ShaderNodeSeparateXYZ")
     nt.links.new(geo.outputs["Normal"], nrm.inputs["Vector"])
-    zf = C.math(nt, "MULTIPLY", pos.outputs["Z"], value_b=1.0)  # single band per storey handled by scale
+    zf = C.nmath(nt, "MULTIPLY", pos.outputs["Z"], value_b=1.0)  # single band per storey handled by scale
     # storeys: assume 4 m storeys, encoded via object scale is unknown here, so use 3 bands
-    zz = C.math(nt, "MULTIPLY", pos.outputs["Z"], value_b=3.0)
-    fr = C.math(nt, "FRACT", zz.outputs[0])
-    lo = C.math(nt, "GREATER_THAN", fr.outputs[0], value_b=band[0])
-    hi = C.math(nt, "LESS_THAN", fr.outputs[0], value_b=band[1])
-    bandm = C.math(nt, "MULTIPLY", lo.outputs[0], hi.outputs[0])
-    nz = C.math(nt, "ABSOLUTE", nrm.outputs["Z"])
-    wall = C.math(nt, "LESS_THAN", nz.outputs[0], value_b=0.5)
+    zz = C.nmath(nt, "MULTIPLY", pos.outputs["Z"], value_b=3.0)
+    fr = C.nmath(nt, "FRACT", zz.outputs[0])
+    lo = C.nmath(nt, "GREATER_THAN", fr.outputs[0], value_b=band[0])
+    hi = C.nmath(nt, "LESS_THAN", fr.outputs[0], value_b=band[1])
+    bandm = C.nmath(nt, "MULTIPLY", lo.outputs[0], hi.outputs[0])
+    nz = C.nmath(nt, "ABSOLUTE", nrm.outputs["Z"])
+    wall = C.nmath(nt, "LESS_THAN", nz.outputs[0], value_b=0.5)
     # pane hash
     comb = nt.nodes.new("ShaderNodeCombineXYZ")
-    fl = C.math(nt, "FLOOR", zz.outputs[0])
-    ux = C.math(nt, "MULTIPLY", pos.outputs["X"], value_b=14.0)
-    uy = C.math(nt, "MULTIPLY", pos.outputs["Y"], value_b=14.0)
-    _, u = C.mix_float(nt, C.math(nt, "ABSOLUTE", nrm.outputs["Y"]).outputs[0], uy.outputs[0], ux.outputs[0])
-    ufl = C.math(nt, "FLOOR", u)
+    fl = C.nmath(nt, "FLOOR", zz.outputs[0])
+    ux = C.nmath(nt, "MULTIPLY", pos.outputs["X"], value_b=14.0)
+    uy = C.nmath(nt, "MULTIPLY", pos.outputs["Y"], value_b=14.0)
+    _, u = C.mix_float(nt, C.nmath(nt, "ABSOLUTE", nrm.outputs["Y"]).outputs[0], uy.outputs[0], ux.outputs[0])
+    ufl = C.nmath(nt, "FLOOR", u)
     nt.links.new(fl.outputs[0], comb.inputs["X"])
     nt.links.new(ufl.outputs[0], comb.inputs["Y"])
-    sgn = C.math(nt, "MULTIPLY_ADD", nrm.outputs["X"], value_b=3.0)
+    sgn = C.nmath(nt, "MULTIPLY_ADD", nrm.outputs["X"], value_b=3.0)
     sgn.inputs[2].default_value = seed
-    sgn2 = C.math(nt, "MULTIPLY_ADD", nrm.outputs["Y"], value_b=5.0)
+    sgn2 = C.nmath(nt, "MULTIPLY_ADD", nrm.outputs["Y"], value_b=5.0)
     nt.links.new(sgn.outputs[0], sgn2.inputs[2])
     nt.links.new(sgn2.outputs[0], comb.inputs["Z"])
     wn = nt.nodes.new("ShaderNodeTexWhiteNoise")
     wn.noise_dimensions = "3D"
     nt.links.new(comb.outputs["Vector"], wn.inputs["Vector"])
-    lit = C.math(nt, "GREATER_THAN", wn.outputs["Value"], value_b=1.0 - lit_fraction)
-    ufr = C.math(nt, "FRACT", u)
-    gap = C.math(nt, "GREATER_THAN", ufr.outputs[0], value_b=0.12)
-    win = C.math(nt, "MULTIPLY", bandm.outputs[0], wall.outputs[0])
-    win = C.math(nt, "MULTIPLY", win.outputs[0], lit.outputs[0])
-    win = C.math(nt, "MULTIPLY", win.outputs[0], gap.outputs[0])
+    lit = C.nmath(nt, "GREATER_THAN", wn.outputs["Value"], value_b=1.0 - lit_fraction)
+    ufr = C.nmath(nt, "FRACT", u)
+    gap = C.nmath(nt, "GREATER_THAN", ufr.outputs[0], value_b=0.12)
+    win = C.nmath(nt, "MULTIPLY", bandm.outputs[0], wall.outputs[0])
+    win = C.nmath(nt, "MULTIPLY", win.outputs[0], lit.outputs[0])
+    win = C.nmath(nt, "MULTIPLY", win.outputs[0], gap.outputs[0])
     em = nt.nodes.new("ShaderNodeEmission")
     em.inputs["Color"].default_value = (*lit_color, 1.0)
     em.inputs["Strength"].default_value = lit_strength
@@ -332,9 +338,9 @@ BUILDINGS = [
 
 def build_buildings(col, concrete):
     kinds = {
-        "glass": _lit_box_material("bld_glass", (0.06, 0.07, 0.08), lit_color=C.kelvin_rgb(4300), lit_strength=5.0, band=(0.15, 0.9), lit_fraction=0.75, seed=3.0),
-        "office": _lit_box_material("bld_office", (0.30, 0.28, 0.25), lit_color=C.kelvin_rgb(3300), lit_strength=5.0, lit_fraction=0.55, seed=5.0),
-        "industrial": _lit_box_material("bld_industrial", (0.22, 0.22, 0.21), lit_color=C.kelvin_rgb(3800), lit_strength=3.0, band=(0.55, 0.8), lit_fraction=0.25, seed=9.0),
+        "glass": _lit_box_material("bld_glass", (0.06, 0.07, 0.08), lit_color=C.kelvin_rgb(4300), lit_strength=1.6, band=(0.15, 0.9), lit_fraction=0.75, seed=3.0),
+        "office": _lit_box_material("bld_office", (0.30, 0.28, 0.25), lit_color=C.kelvin_rgb(3300), lit_strength=1.8, lit_fraction=0.55, seed=5.0),
+        "industrial": _lit_box_material("bld_industrial", (0.22, 0.22, 0.21), lit_color=C.kelvin_rgb(3800), lit_strength=1.2, band=(0.55, 0.8), lit_fraction=0.25, seed=9.0),
     }
     unit = C.box_mesh_data("unit_box")
     for name, (x, y), size, rot, kind in BUILDINGS:
@@ -342,7 +348,7 @@ def build_buildings(col, concrete):
         me.materials.append(kinds[kind])
         C.instance(name, me, col=col, location=(x, y, 0.0), rotation=(0, 0, math.radians(rot)), scale=size)
     # Tevatron sector service buildings (A0..F0) with a white lamp each
-    lamp_mat = C.emissive_material("service_lamp", LED_WHITE, 25.0, camera_strength=60.0)
+    lamp_mat = C.emissive_material("service_lamp", LED_WHITE, 15.0, camera_strength=30.0)
     lamp_me = C.sphere_mesh_data("service_lamp_m", 0.45)
     lamp_me.materials.append(lamp_mat)
     for k in range(6):
@@ -355,7 +361,7 @@ def build_buildings(col, concrete):
         C.instance(f"tev_service_lamp_{k}", lamp_me, col=col, location=(x + 12 * math.cos(a + 1.2), y + 12 * math.sin(a + 1.2), 8.0))
     # Fermilab Village (former farmhouses, east side): warm scattered dwellings
     rng = random.Random(7)
-    house = _lit_box_material("bld_house", (0.35, 0.30, 0.26), lit_color=C.kelvin_rgb(2900), lit_strength=4.0, band=(0.3, 0.7), lit_fraction=0.6, seed=11.0)
+    house = _lit_box_material("bld_house", (0.35, 0.30, 0.26), lit_color=C.kelvin_rgb(2900), lit_strength=1.5, band=(0.3, 0.7), lit_fraction=0.6, seed=11.0)
     for i in range(34):
         x = 2850.0 + rng.uniform(-260, 260)
         y = 250.0 + rng.uniform(-220, 220)
@@ -482,10 +488,10 @@ def _city_material(name, color, strength, scale):
     # fade to nothing towards the top of the strip
     pos = nt.nodes.new("ShaderNodeSeparateXYZ")
     nt.links.new(tc.outputs["Generated"], pos.inputs["Vector"])
-    fade = C.math(nt, "SUBTRACT", value_a=1.0, b=pos.outputs["Z"])
-    fade = C.math(nt, "POWER", fade.outputs[0], value_b=2.2)
-    s = C.math(nt, "MULTIPLY", ramp.outputs["Color"], fade.outputs[0])
-    s = C.math(nt, "MULTIPLY", s.outputs[0], value_b=strength)
+    fade = C.nmath(nt, "SUBTRACT", value_a=1.0, b=pos.outputs["Z"])
+    fade = C.nmath(nt, "POWER", fade.outputs[0], value_b=2.2)
+    s = C.nmath(nt, "MULTIPLY", ramp.outputs["Color"], fade.outputs[0])
+    s = C.nmath(nt, "MULTIPLY", s.outputs[0], value_b=strength)
     em = nt.nodes.new("ShaderNodeEmission")
     em.inputs["Color"].default_value = (*color, 1.0)
     nt.links.new(s.outputs[0], em.inputs["Strength"])
@@ -497,9 +503,9 @@ def build_towns(col):
     amber = (1.0, 0.58, 0.28)
     # Naperville / Warrenville (east), Batavia-Geneva (north-west), Aurora (south)
     strips = [
-        ("towns_east", (9500.0, -1500.0), 26000.0, 70.0, math.radians(90), 1.6, 0.0011),
-        ("towns_north", (-2500.0, 5200.0), 14000.0, 45.0, 0.0, 1.1, 0.0016),
-        ("towns_south", (1500.0, -8500.0), 16000.0, 45.0, 0.0, 0.9, 0.0014),
+        ("towns_east", (9500.0, -1500.0), 26000.0, 70.0, math.radians(90), 0.45, 0.0011),
+        ("towns_north", (-2500.0, 5200.0), 14000.0, 45.0, 0.0, 0.32, 0.0016),
+        ("towns_south", (1500.0, -8500.0), 16000.0, 45.0, 0.0, 0.28, 0.0014),
     ]
     for name, (x, y), length, height, rot, strength, scale in strips:
         mat = _city_material(name + "_m", amber, strength, scale)

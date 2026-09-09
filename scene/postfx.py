@@ -81,6 +81,12 @@ def build_compositor(scene, *, bloom_strength=0.22, bloom_size=0.55, bloom_thres
     scene.compositing_node_group = ng
     scene.use_nodes = True
     scene.render.use_compositing = True
+    for attr, val in (("compositor_device", "CPU"), ("compositor_precision", "FULL")):
+        if hasattr(scene.render, attr):
+            try:
+                setattr(scene.render, attr, val)
+            except TypeError as e:
+                print("[postfx]", attr, e)
     nodes, links = ng.nodes, ng.links
 
     rl = nodes.new("CompositorNodeRLayers")
@@ -158,11 +164,7 @@ def build_compositor(scene, *, bloom_strength=0.22, bloom_size=0.55, bloom_thres
         mul.blend_type = "MULTIPLY"
         C.sock_in(mul, "Factor_Float").default_value = 1.0
         links.new(img, C.sock_in(mul, "A_Color"))
-        # broadcast factor to colour via a Combine node
-        comb = nodes.new("ShaderNodeCombineColor")
-        for ch in ("Red", "Green", "Blue"):
-            links.new(sc.outputs[0], comb.inputs[ch])
-        links.new(comb.outputs["Color"], C.sock_in(mul, "B_Color"))
+        links.new(sc.outputs[0], C.sock_in(mul, "B_Color"))  # implicit float -> colour
         img = C.sock_out(mul, "Result_Color")
 
     out = nodes.new("NodeGroupOutput")
