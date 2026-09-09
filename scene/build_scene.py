@@ -18,7 +18,7 @@ Options (after the `--`):
                          hdri = a Poly Haven sky. Sun position comes from the star map's
                          JSON sidecar unless --sun-elevation/--sun-azimuth override it.
   --star-scale S         multiplier on the star field in twilight mode (default 1.0)
-  --no-boundary          do not highlight the Fermilab site boundary
+  --boundary auto|on|off highlight the site boundary; auto (default) = only the wide cameras
   --boundary-strength S  how brightly the boundary reads to the camera (default 6.0)
   --sky-file PATH        pre-oriented night-sky EXR (default assets/hdri/fermilab_night_sky.exr)
   --device CPU|GPU       Cycles device (default CPU; use GPU on a workstation)
@@ -53,6 +53,10 @@ sys.path.insert(0, os.path.dirname(HERE))
 
 from scene import atmosphere, camera_rig, common as C, postfx, site, wilson_hall  # noqa: E402
 
+# Cameras high/wide enough that the site-boundary ribbon reads as an outline on the ground
+# rather than a line across the horizon.
+BOUNDARY_CAMERAS = {"overview", "overlook", "high"}
+
 
 def parse_args():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
@@ -72,7 +76,9 @@ def parse_args():
     p.add_argument("--sun-elevation", type=float, default=None, help="sun elevation in degrees (negative = below horizon); default comes from the sky sidecar")
     p.add_argument("--sun-azimuth", type=float, default=None, help="sun compass azimuth (deg from north, clockwise); default comes from the sky sidecar")
     p.add_argument("--star-scale", type=float, default=1.0, help="multiplier on the star field in twilight mode")
-    p.add_argument("--no-boundary", action="store_true", help="do not highlight the Fermilab site boundary")
+    p.add_argument("--boundary", default="auto", choices=["auto", "on", "off"],
+                   help="highlight the Fermilab site boundary: auto (default) enables it only for the wide cameras, where it explains the site's extent instead of streaking across the horizon")
+    p.add_argument("--no-boundary", action="store_true", help="alias for --boundary off")
     p.add_argument("--boundary-strength", type=float, default=6.0, help="how brightly the site boundary reads to the camera")
     p.add_argument("--hdri", default="kloppenheim_06_puresky")
     p.add_argument("--hdri-res", default="4k")
@@ -147,8 +153,14 @@ def main():
     site.build_street_lights(cols["lights"])
     site.build_buildings(cols["buildings"], concrete)
     ntrees = site.build_trees(cols["trees"], density=args.tree_density)
-    if not args.no_boundary:
+    # Seen edge-on from a low camera the boundary ribbon reads as a bright streak across the
+    # horizon, so by default it is drawn only for the cameras high enough to look down on it.
+    want_boundary = {"on": True, "off": False}.get(args.boundary, args.camera in BOUNDARY_CAMERAS)
+    if args.no_boundary:
+        want_boundary = False
+    if want_boundary:
         site.build_campus_boundary(cols["site"], camera_strength=args.boundary_strength)
+        print(f"[build] site boundary highlighted ({args.camera})")
     site.build_towns(cols["site"])
     print(f"[build] geometry done: {len(bpy.data.objects)} objects, {ntrees} trees, {time.time() - t0:.1f}s")
 

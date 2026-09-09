@@ -28,12 +28,12 @@ PRESETS = {
     # high NE overlook: the whole site laid out to the SW -- Wilson Hall left of centre and
     # the collider ring sweeping through the middle distance. Reads as a graphic, not a portrait.
     "overlook": dict(location=(760.0, 1020.0, 330.0), target=(500.0, -520.0, 40.0), lens=28.0, fstop=2.2),
-    # --- the whole complex: 2.4 km up and 8.5 km NNE of the site centroid, looking SSW on a
+    # --- the whole complex: 2.0 km up and 6.5 km NNE of the site centroid, looking SSW on a
     # 24 mm lens. Frames the entire ~4.5 x 5 km campus boundary with both accelerator rings
     # and the collider, keeps the horizon in the upper quarter, and (at the default instant)
     # puts the galactic centre low in the south with the twilight glow off to the west.
     # Deep aperture: at these distances there is nothing to throw out of focus.
-    "overview": dict(location=(4130.0, 6890.0, 2400.0), target=(650.0, -2690.0, 0.0), lens=24.0, fstop=8.0),
+    "overview": dict(location=(3450.0, 5010.0, 2000.0), target=(870.0, -2080.0, 0.0), lens=24.0, fstop=8.0),
 
     # --- other vantages. Note that from the SW the galactic centre is behind the camera,
     # so these see the fainter anti-centre sky.
