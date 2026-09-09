@@ -567,6 +567,14 @@ def _city_material(name, color, strength, scale):
 
 
 def build_towns(col):
+    """Distant town glow as emissive strips on the horizon.
+
+    Off by default (--towns to enable): the light-pollution domes baked into the
+    sky HDRI by tools/make_sky_hdri.py put that glow where it belongs, in the
+    sky, whereas these strips sit 9-26 km out and only 30-70 m tall, so from an
+    elevated camera they are silhouetted *against the ground* as a dark bar
+    rather than glowing above the horizon.
+    """
     amber = (1.0, 0.58, 0.28)
     # Naperville / Warrenville (east), Batavia-Geneva (north-west), Aurora (south)
     strips = [

@@ -20,6 +20,7 @@ Options (after the `--`):
   --star-scale S         multiplier on the star field in twilight mode (default 1.0)
   --boundary auto|on|off highlight the site boundary; auto (default) = only the wide cameras
   --boundary-strength S  how brightly the boundary reads to the camera (default 4.0)
+  --towns                add distant town-glow strips (off: the sky HDRI already has sky glow)
   --sky-file PATH        pre-oriented night-sky EXR (default assets/hdri/fermilab_night_sky.exr)
   --device CPU|GPU       Cycles device (default CPU; use GPU on a workstation)
   --moon                 add a moon (off by default: it would wash out the Milky Way)
@@ -93,6 +94,7 @@ def parse_args():
     p.add_argument("--tree-density", type=float, default=1.0)
     p.add_argument("--no-grass", action="store_true")
     p.add_argument("--no-floods", action="store_true")
+    p.add_argument("--towns", action="store_true", help="add distant town-glow strips (the sky HDRI already carries light-pollution domes; from an elevated camera the strips read as a dark bar against the ground)")
     p.add_argument("--moon-az", type=float, default=62.0)
     p.add_argument("--moon-el", type=float, default=9.0)
     p.add_argument("--moon-energy", type=float, default=0.12)
@@ -161,7 +163,8 @@ def main():
     if want_boundary:
         site.build_campus_boundary(cols["site"], camera_strength=args.boundary_strength)
         print(f"[build] site boundary highlighted ({args.camera})")
-    site.build_towns(cols["site"])
+    if args.towns:
+        site.build_towns(cols["site"])
     print(f"[build] geometry done: {len(bpy.data.objects)} objects, {ntrees} trees, {time.time() - t0:.1f}s")
 
     # --- atmosphere -------------------------------------------------------------
