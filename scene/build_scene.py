@@ -10,12 +10,15 @@ Options (after the `--`):
   --time-limit SEC       stop sampling after N seconds per image (0 = off)
   --camera NAME          aerial | east | aerial_wide | high | low | portrait
   --lens MM --fstop F    override the preset lens / aperture
+  --sky nishita|hdri     physically based twilight sky (default) or the HDRI below
+  --sun-elevation DEG    Nishita sun elevation (default -4: civil twilight)
+  --sun-azimuth DEG      Nishita sunset compass azimuth (default 290 = WNW)
   --hdri NAME            Poly Haven id (default kloppenheim_06_puresky)
   --hdri-res 2k|4k       which downloaded resolution to use (default 4k, falls back)
-  --sky-strength S       HDRI multiplier (default 0.12)
+  --sky-strength S       sky multiplier (default 1.0 nishita / 0.12 hdri)
   --sky-rot DEG          rotate the sky about Z (default 161.6: sunset glow at WNW)
   --exposure EV          view exposure (default 0.0)
-  --fog-density D        ground fog peak density per metre (default 2.5e-3)
+  --fog-density D        ground fog peak density per metre (default 1.2e-3)
   --no-fog               disable the ground-fog volume
   --no-haze              disable the aerial haze volume (--haze-density D to tune)
   --tree-density F       scale tree counts (default 1.0; 0.3 for quick previews)
@@ -48,12 +51,15 @@ def parse_args():
     p.add_argument("--camera", default="aerial", choices=sorted(camera_rig.PRESETS))
     p.add_argument("--lens", type=float, default=None)
     p.add_argument("--fstop", type=float, default=None)
+    p.add_argument("--sky", default="nishita", choices=["nishita", "hdri"])
+    p.add_argument("--sun-elevation", type=float, default=-4.0, help="Nishita sun elevation in degrees (negative = below horizon)")
+    p.add_argument("--sun-azimuth", type=float, default=290.0, help="Nishita sunset compass azimuth (deg from north, clockwise)")
     p.add_argument("--hdri", default="kloppenheim_06_puresky")
     p.add_argument("--hdri-res", default="4k")
-    p.add_argument("--sky-strength", type=float, default=0.12)
+    p.add_argument("--sky-strength", type=float, default=None, help="sky multiplier (default 1.0 for nishita, 0.12 for hdri)")
     p.add_argument("--sky-rot", type=float, default=161.6)
     p.add_argument("--exposure", type=float, default=0.0)
-    p.add_argument("--fog-density", type=float, default=2.5e-3)
+    p.add_argument("--fog-density", type=float, default=1.2e-3)
     p.add_argument("--no-fog", action="store_true")
     p.add_argument("--no-haze", action="store_true")
     p.add_argument("--haze-density", type=float, default=3.5e-5)
@@ -80,6 +86,8 @@ def hdri_path(name, res):
 
 def main():
     args = parse_args()
+    if args.sky_strength is None:
+        args.sky_strength = 1.0 if args.sky == "nishita" else 0.12
     t0 = time.time()
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
@@ -107,7 +115,7 @@ def main():
     print(f"[build] geometry done: {len(bpy.data.objects)} objects, {ntrees} trees, {time.time() - t0:.1f}s")
 
     # --- atmosphere -------------------------------------------------------------
-    atmosphere.build_world(hdri_path(args.hdri, args.hdri_res), strength=args.sky_strength, rotation_deg=args.sky_rot, stars=not args.no_stars)
+    atmosphere.build_world(hdri_path(args.hdri, args.hdri_res), mode=args.sky, strength=args.sky_strength, rotation_deg=args.sky_rot, sun_elevation_deg=args.sun_elevation, sun_azimuth_deg=args.sun_azimuth, stars=not args.no_stars)
     if not args.no_haze:
         atmosphere.build_haze(cols["atmosphere"], density=args.haze_density)
     if not args.no_fog:

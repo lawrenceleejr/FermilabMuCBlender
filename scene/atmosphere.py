@@ -18,8 +18,13 @@ import bpy
 
 from . import common as C
 
+# Sky Texture `sun_rotation` was probed in Blender 5.2: 0 puts the sun at +Y
+# (north) and 90 deg at +X (east), i.e. it already is a compass azimuth
+# (clockwise from north), so no offset is needed.
+NISHITA_ROT_OFFSET = 0.0
 
-def build_world(hdri_path: str, *, strength=0.12, rotation_deg=0.0, stars=True, star_strength=6.0, haze_density=2.2e-5):
+
+def build_world(hdri_path: str, *, mode="nishita", strength=0.12, rotation_deg=0.0, sun_elevation_deg=-4.0, sun_azimuth_deg=290.0, stars=True, star_strength=6.0):
     world = bpy.data.worlds.new("dusk")
     world.use_nodes = True
     bpy.context.scene.world = world
@@ -33,20 +38,24 @@ def build_world(hdri_path: str, *, strength=0.12, rotation_deg=0.0, stars=True, 
     mp.inputs["Rotation"].default_value = (0.0, 0.0, math.radians(rotation_deg))
     nt.links.new(tc.outputs["Generated"], mp.inputs["Vector"])
 
-    if os.path.exists(hdri_path):
+    if mode == "nishita" or not os.path.exists(hdri_path):
+        # physically based twilight: sun just below the horizon -> deep blue
+        # gradient with a warm band towards the sunset azimuth, no cloud deck
+        sk = nt.nodes.new("ShaderNodeTexSky")
+        sk.sky_type = "MULTIPLE_SCATTERING"
+        sk.sun_disc = False
+        sk.sun_elevation = math.radians(sun_elevation_deg)
+        sk.sun_rotation = math.radians(sun_azimuth_deg) + NISHITA_ROT_OFFSET
+        sk.altitude = 120.0
+        sk.air_density = 1.0
+        sk.ozone_density = 1.6      # more ozone = deeper blue twilight
+        sky = sk.outputs["Color"]
+    elif os.path.exists(hdri_path):
         env = nt.nodes.new("ShaderNodeTexEnvironment")
         env.image = bpy.data.images.load(hdri_path, check_existing=True)
         env.interpolation = "Cubic"
         nt.links.new(mp.outputs["Vector"], env.inputs["Vector"])
         sky = env.outputs["Color"]
-    else:  # fallback: physically based dusk sky
-        sk = nt.nodes.new("ShaderNodeTexSky")
-        sk.sky_type = "MULTIPLE_SCATTERING"
-        sk.sun_elevation = math.radians(-3.0)
-        sk.sun_rotation = math.radians(rotation_deg)
-        sk.sun_disc = False
-        sk.altitude = 120.0
-        sky = sk.outputs["Color"]
 
     # sky * strength
     _, sky_scaled = C.mix_color(nt, 1.0, sky, (strength, strength, strength, 1.0), "MULTIPLY")
@@ -115,7 +124,7 @@ def build_haze(col, *, density=3.5e-5, size=80000.0, height=1800.0, anisotropy=0
     return obj
 
 
-def build_ground_fog(col, *, center=(900.0, -450.0), size=(9000.0, 9000.0), height=140.0, density=3.5e-3, scale_height=22.0, patch_scale=260.0, anisotropy=0.55, seed=3.0):
+def build_ground_fog(col, *, center=(900.0, -450.0), size=(9000.0, 9000.0), height=140.0, density=1.2e-3, scale_height=18.0, patch_scale=420.0, anisotropy=0.55, seed=3.0):
     """Box volume: exponential height falloff x noise pools. Camera may be inside."""
     mat = bpy.data.materials.new("ground_fog")
     mat.use_nodes = True
