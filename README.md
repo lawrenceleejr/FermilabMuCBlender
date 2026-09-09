@@ -14,23 +14,41 @@ HDRI are downloaded (all CC0, see `assets/MANIFEST.md`).
 ## Render
 
 Requirements: Blender 5.x on `PATH` (or `BLENDER=/path/to/blender`), Python 3
-for the asset fetcher. No GPU needed; the final frame renders on CPU.
+for the asset fetcher. Previews render fine on a 4-core CPU; the final frame
+is meant for a GPU workstation (`--gpu` auto-selects OptiX/CUDA/HIP/Metal).
 
 ```sh
-python3 tools/fetch_assets.py          # ~120 MB of CC0 textures + sky HDRIs
-./render.sh --preview                  # 640x360 look-dev pass (~1 min on 4 cores)
-./render.sh                            # 2560x1440 hero -> renders/fermilab_muc_cover.png
-./render.sh --camera portrait --res 1600x2000 --out renders/fermilab_muc_cover_portrait.png
+python3 tools/fetch_assets.py                      # ~250 MB: CC0 textures, Poly Haven skies, NASA star map
+blender -b --python tools/make_sky_hdri.py -- --res 8k   # build assets/hdri/fermilab_night_sky.exr (~1 min)
+./render.sh --preview                              # 640x360 look-dev pass (~1 min on CPU)
+./render.sh --gpu --final                          # 3840x2160, 1024 spp -> renders/fermilab_muc_cover.png
+./render.sh --gpu --final --camera portrait --res 2400x3000 --out renders/fermilab_muc_cover_portrait.png
 ```
 
-`render.sh` forwards flags to `scene/build_scene.py`; run
-`blender -b -P scene/build_scene.py -- --help` or read its docstring for the
-full list (camera presets, sky strength/rotation, fog density, exposure,
-sample count, `--save-blend` to keep an editable `.blend`).
+`render.sh` forwards flags to `scene/build_scene.py`; read its docstring for
+the full list (camera presets, sky mode, fog density, exposure, samples,
+`--save-blend out/scene.blend` to keep an editable `.blend` with relative
+asset paths that you can open on another machine after fetching the assets).
 
 Look-dev loop: render a preview, then `python3 tools/render_sheet.py out/preview.png`
 writes a sheet with the frame, three zoomed crops and a luminance histogram
 with clipping percentages.
+
+## The night sky
+
+`tools/make_sky_hdri.py` builds the sky from NASA/GSFC's *Deep Star Maps 2020*
+(1.7 billion Gaia/Hipparcos/Tycho stars, equatorial coordinates, public
+domain). It computes local sidereal time for Fermilab (41.8319 N, 88.2560 W)
+at the requested UTC instant, rotates the map into the local horizon frame,
+adds a faint airglow floor and the light-pollution domes of Chicago,
+Naperville, Aurora and the Fox Valley towns, and writes an equirectangular
+EXR in Blender's world convention. The default instant, 21:30 CDT on
+9 September 2026, puts the galactic centre 13 deg up in the SSW, Cygnus and
+Vega near the zenith, Polaris due north at 41.7 deg, and Capella just rising
+in the NNE. The script prints that table and verifies that each reference
+star lands on a bright pixel of the output. Change the instant with
+`--utc 2026-07-20T04:00` (any ISO time); use `--res 16k` for the 443 MB source
+when rendering above 4K.
 
 ## What is in the scene
 
@@ -39,8 +57,8 @@ with clipping percentages.
 | Wilson Hall | Two lofted towers following `y = 34 - 25 t^2.3` (outer face) so they lean in and meet at the roof; procedural facade with per-floor ribbon windows, randomly lit offices (2700-4200 K), board-formed concrete texture; glazed atrium ends with lit balcony edges; Ramsey Auditorium, plaza, reflecting pond, hyperbolic obelisk, five warm floodlights |
 | Accelerators | Tevatron berm (r = 1000 m) with inner cooling-pond ring and a faint amber tunnel marker; Main Injector berm; the muon collider as a 1590 m-radius emissive tube (cyan, brighter to the camera than to the scene) with a soft sheath, two detector halls at opposite interaction points, and the proton-driver linac meeting the ring at its western crossing |
 | Site | 60 km prairie plane (Grass004 x Ground037, tallgrass tint), ten lakes with Fresnel water and wind-stretched ripples, road network with wet asphalt, ~120 sodium/LED lamps, ancillary buildings with hashed lit windows, ~3,700 instanced trees in woods, hedgerows and tree lines, distant town glow on three horizons |
-| Atmosphere | Poly Haven `kloppenheim_06_puresky` at 0.6x rotated so the sunset sits WNW; procedural stars that appear only where the sky is dark; homogeneous world haze for aerial perspective; a 9 km ground-fog box with exponential height falloff and noise pools (anisotropic forward scattering); rising moon disc + matching sun lamp |
-| Camera | Full-frame 40 mm at f/1.8, depth of field on Wilson Hall; presets `aerial`, `east`, `aerial_wide`, `high`, `low` (with bokeh prairie grass in the foreground), `portrait` |
+| Atmosphere | Astronomically placed Milky Way sky (see below) with Chicago-area sky glow; optional physically based twilight (`--sky nishita`) or Poly Haven HDRI (`--sky hdri`); homogeneous aerial haze in an 80 km box; a 9 km ground-fog box with exponential height falloff and noise pools (anisotropic forward scattering); optional moon (`--moon`) |
+| Camera | Full-frame 32-40 mm at f/1.8, depth of field on Wilson Hall; presets `aerial` (SW, looking NE along the ring), `northeast` (over the reflecting pond toward the galactic core), `east`, `aerial_wide`, `high`, `low` (with bokeh prairie grass in the foreground), `portrait` |
 | Look | Cycles with adaptive sampling, path guiding, light tree, OpenImageDenoise; AgX "Punchy"; compositor bloom (two passes), faint chromatic aberration, vignette |
 
 ## Layout
@@ -48,7 +66,7 @@ with clipping percentages.
 ```
 scene/            build_scene.py (entry), common.py, wilson_hall.py, site.py,
                   atmosphere.py, camera_rig.py, postfx.py
-tools/            fetch_assets.py, render_sheet.py
-assets/           MANIFEST.md (+ downloaded textures/ and hdri/, git-ignored)
+tools/            fetch_assets.py, make_sky_hdri.py, render_sheet.py
+assets/           MANIFEST.md (+ downloaded textures/, hdri/, starmap/, git-ignored)
 renders/          final images
 ```

@@ -147,8 +147,14 @@ def main():
 
     if args.save_blend:
         os.makedirs(os.path.dirname(os.path.abspath(args.save_blend)) or ".", exist_ok=True)
-        bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(args.save_blend))
-        print(f"[build] saved {args.save_blend}")
+        blend_path = os.path.abspath(args.save_blend)
+        bpy.ops.wm.save_as_mainfile(filepath=blend_path)
+        try:  # make texture/HDRI paths relative so the file travels with the repo
+            bpy.ops.file.make_paths_relative()
+            bpy.ops.wm.save_as_mainfile(filepath=blend_path)
+        except Exception as e:  # noqa: BLE001
+            print("[build] relative paths:", e)
+        print(f"[build] saved {blend_path}")
     print(f"[build] scene ready in {time.time() - t0:.1f}s")
 
     if not args.no_render:
