@@ -1,0 +1,7 @@
+# Large CC0 assets are fetched by tools/fetch_assets.py, not committed.
+assets/textures/
+assets/hdri/
+# Scratch renders / previews
+out/
+*.blend1
+__pycache__/
