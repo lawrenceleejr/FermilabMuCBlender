@@ -24,7 +24,7 @@ PRESETS = {
     "northeast": dict(location=(270.0, 400.0, 110.0), target=(-10.0, -20.0, 84.0), lens=35.0, fstop=1.8),
     # same vantage in cover format: tilted up so the building sits in the lower third and
     # the Milky Way fills the upper two-thirds. Use with a portrait --res.
-    "cover": dict(location=(240.0, 355.0, 96.0), target=(-8.0, -18.0, 132.0), lens=30.0, fstop=1.8),
+    "cover": dict(location=(240.0, 358.0, 99.0), target=(-8.0, -18.0, 121.0), lens=30.0, fstop=1.8),
     # high NE overlook: the whole site laid out to the SW -- Wilson Hall left of centre and
     # the collider ring sweeping through the middle distance. Reads as a graphic, not a portrait.
     "overlook": dict(location=(760.0, 1020.0, 330.0), target=(500.0, -520.0, 40.0), lens=28.0, fstop=2.2),
