@@ -85,8 +85,27 @@ def prairie_material():
     ramp.color_ramp.elements[1].position = 0.62
     nt.links.new(big.outputs["Fac"], ramp.inputs["Fac"])
     _, mixed = C.mix_color(nt, ramp.outputs["Color"], gc.outputs["Color"], dc.outputs["Color"])
+
+    # Agricultural parcels. The land around and inside the site is a patchwork of
+    # mown grass, restored prairie and leased farm fields; from the air that
+    # parcel structure is most of what makes the landscape readable, so give each
+    # Voronoi cell its own brightness and warmth. Subtle -- +-30 % -- so it reads
+    # as fields rather than as a texture.
+    vor = nt.nodes.new("ShaderNodeTexVoronoi")
+    vor.feature = "F1"
+    vor.distance = "EUCLIDEAN"
+    vor.inputs["Scale"].default_value = 1.0 / 340.0     # ~340 m parcels
+    vor.inputs["Randomness"].default_value = 0.85
+    nt.links.new(tc.outputs["Object"], vor.inputs["Vector"])
+    cell = nt.nodes.new("ShaderNodeTexWhiteNoise")
+    cell.noise_dimensions = "3D"
+    nt.links.new(vor.outputs["Position"], cell.inputs["Vector"])
+    parcel = C.nmath(nt, "MULTIPLY_ADD", cell.outputs["Value"], value_b=0.60)
+    parcel.inputs[2].default_value = 0.70              # 0.70 .. 1.30
+    _, parcelled = C.mix_color(nt, 1.0, mixed, parcel.outputs[0], "MULTIPLY")
+
     # tallgrass tint (Sept: tan/gold with green) and dusk darkening
-    _, tinted = C.mix_color(nt, 1.0, mixed, (0.80, 0.66, 0.42, 1.0), "MULTIPLY")
+    _, tinted = C.mix_color(nt, 1.0, parcelled, (0.80, 0.66, 0.42, 1.0), "MULTIPLY")
     nt.links.new(tinted, bsdf.inputs["Base Color"])
     bsdf.inputs["Specular IOR Level"].default_value = 0.12   # grass has almost no grazing sheen; keeps the far horizon dark
     if g.get("Roughness"):
@@ -161,7 +180,7 @@ def build_collider(col, concrete):
     C.box_object("target_hall", (40.0, 18.0, 10.0), (x0 + 0.62 * (x1 - x0), y0 + 22.0, 0), col=col, material=concrete)
 
 
-def build_campus_boundary(col, *, width=16.0, strength=1.2, camera_strength=6.0, color=(1.0, 0.93, 0.82), z=0.7, posts=True):
+def build_campus_boundary(col, *, width=11.0, strength=1.2, camera_strength=4.0, color=(1.0, 0.93, 0.82), z=0.7, posts=True):
     """Highlight the site boundary as a glowing ribbon lying on the ground.
 
     A flat ribbon (rather than a tube) reads as a clean line from an overhead
