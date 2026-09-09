@@ -5,8 +5,12 @@ Sources:
   * ambientCG  (https://ambientcg.com)  -- CC0 1.0 PBR texture sets
   * Poly Haven (https://polyhaven.com)  -- CC0 1.0 HDRIs
 
-Usage:  python3 tools/fetch_assets.py [--hdri-res 2k|4k|8k] [--only textures|hdri]
-Files land in assets/textures/<Set>/ and assets/hdri/. Existing files are kept.
+  * NASA/GSFC SVS (https://svs.gsfc.nasa.gov/4851) -- Deep Star Maps 2020, public domain
+
+Usage:  python3 tools/fetch_assets.py [--hdri-res 2k|4k|8k] [--starmap-res 4k|8k|16k] [--only textures|hdri|starmap]
+Files land in assets/textures/<Set>/, assets/hdri/ and assets/starmap/. Existing files are kept.
+The Fermilab night-sky HDRI itself is then built with:
+    blender -b --python tools/make_sky_hdri.py -- --res 8k
 """
 from __future__ import annotations
 
@@ -21,6 +25,8 @@ import zipfile
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 TEX_DIR = ROOT / "assets" / "textures"
 HDRI_DIR = ROOT / "assets" / "hdri"
+STARMAP_DIR = ROOT / "assets" / "starmap"
+SVS_URL = "https://svs.gsfc.nasa.gov/vis/a000000/a004800/a004851/starmap_2020_{res}.exr"
 
 # ambientCG texture sets: (asset id, resolution/format). 2K for surfaces near the
 # camera, 1K for far/small surfaces.
@@ -84,15 +90,30 @@ def fetch_hdris(res: str) -> None:
         print(f"[hdri] {hid}: {len(data) / 1e6:.1f} MB -> {dest}")
 
 
+def fetch_starmap(res: str) -> None:
+    STARMAP_DIR.mkdir(parents=True, exist_ok=True)
+    dest = STARMAP_DIR / f"starmap_2020_{res}.exr"
+    if dest.exists():
+        print(f"[starmap] {res}: present")
+        return
+    url = SVS_URL.format(res=res)
+    print(f"[starmap] downloading {url} (4k=36 MB, 8k=130 MB, 16k=443 MB)")
+    dest.write_bytes(_get(url))
+    print(f"[starmap] -> {dest}")
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--hdri-res", default="4k", choices=["1k", "2k", "4k", "8k"])
-    p.add_argument("--only", choices=["textures", "hdri"])
+    p.add_argument("--starmap-res", default="8k", choices=["4k", "8k", "16k"])
+    p.add_argument("--only", choices=["textures", "hdri", "starmap"])
     a = p.parse_args()
     if a.only in (None, "textures"):
         fetch_textures()
     if a.only in (None, "hdri"):
         fetch_hdris(a.hdri_res)
+    if a.only in (None, "starmap"):
+        fetch_starmap(a.starmap_res)
     return 0
 
 

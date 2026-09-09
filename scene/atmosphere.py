@@ -24,7 +24,10 @@ from . import common as C
 NISHITA_ROT_OFFSET = 0.0
 
 
-def build_world(hdri_path: str, *, mode="nishita", strength=0.12, rotation_deg=0.0, sun_elevation_deg=-4.0, sun_azimuth_deg=290.0, stars=True, star_strength=6.0):
+def build_world(hdri_path: str, *, mode="milkyway", strength=1.0, rotation_deg=0.0, sun_elevation_deg=-4.0, sun_azimuth_deg=290.0, stars=True, star_strength=6.0):
+    """World shader. mode: "milkyway" (HDRI already in the local horizon frame,
+    from tools/make_sky_hdri.py), "hdri" (Poly Haven sky, rotated), or
+    "nishita" (physically based twilight)."""
     world = bpy.data.worlds.new("dusk")
     world.use_nodes = True
     bpy.context.scene.world = world
@@ -38,7 +41,14 @@ def build_world(hdri_path: str, *, mode="nishita", strength=0.12, rotation_deg=0
     mp.inputs["Rotation"].default_value = (0.0, 0.0, math.radians(rotation_deg))
     nt.links.new(tc.outputs["Generated"], mp.inputs["Vector"])
 
-    if mode == "nishita" or not os.path.exists(hdri_path):
+    if mode == "milkyway" and os.path.exists(hdri_path):
+        env = nt.nodes.new("ShaderNodeTexEnvironment")
+        env.image = bpy.data.images.load(hdri_path, check_existing=True)
+        env.interpolation = "Cubic"
+        nt.links.new(mp.outputs["Vector"], env.inputs["Vector"])
+        sky = env.outputs["Color"]
+        stars = False  # real stars are in the map
+    elif mode == "nishita" or not os.path.exists(hdri_path):
         # physically based twilight: sun just below the horizon -> deep blue
         # gradient with a warm band towards the sunset azimuth, no cloud deck
         sk = nt.nodes.new("ShaderNodeTexSky")

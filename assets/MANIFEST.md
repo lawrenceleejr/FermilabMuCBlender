@@ -1,7 +1,8 @@
 # Third-party assets
 
-All external assets are **CC0 1.0** (public domain dedication). They are not
-committed; run `python3 tools/fetch_assets.py` to download them.
+All external assets are **CC0 1.0** or US-government public domain. They are
+not committed; run `python3 tools/fetch_assets.py` to download them, then
+`blender -b --python tools/make_sky_hdri.py` to build the night sky.
 
 | Asset | Source | Use |
 |---|---|---|
@@ -13,6 +14,7 @@ committed; run `python3 tools/fetch_assets.py` to download them.
 | qwantani_dusk_2_puresky | Poly Haven, https://polyhaven.com/a/qwantani_dusk_2_puresky | sky / ambient light |
 | kloppenheim_06_puresky | Poly Haven, https://polyhaven.com/a/kloppenheim_06_puresky | alternate sky |
 | qwantani_night_puresky | Poly Haven, https://polyhaven.com/a/qwantani_night_puresky | alternate sky |
+| Deep Star Maps 2020 (`starmap_2020_8k.exr`) | NASA/GSFC Scientific Visualization Studio, https://svs.gsfc.nasa.gov/4851 (public domain; Gaia DR2: ESA/Gaia/DPAC) | night sky: rotated into Fermilab's horizon frame by `tools/make_sky_hdri.py` to produce `assets/hdri/fermilab_night_sky.exr` |
 
 Everything else in the scene (terrain, Wilson Hall, rings, water, trees, lights,
 the collider itself) is generated procedurally by the scripts in `scene/`.

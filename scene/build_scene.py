@@ -8,9 +8,12 @@ Options (after the `--`):
   --res WxH              resolution (default 2560x1440)
   --samples N            Cycles samples (default 512, adaptive)
   --time-limit SEC       stop sampling after N seconds per image (0 = off)
-  --camera NAME          aerial | east | aerial_wide | high | low | portrait
+  --camera NAME          aerial | northeast | east | aerial_wide | high | low | portrait
   --lens MM --fstop F    override the preset lens / aperture
-  --sky nishita|hdri     physically based twilight sky (default) or the HDRI below
+  --sky milkyway|nishita|hdri  real night sky from tools/make_sky_hdri.py (default), physically based twilight, or a Poly Haven HDRI
+  --sky-file PATH        pre-oriented night-sky EXR (default assets/hdri/fermilab_night_sky.exr)
+  --device CPU|GPU       Cycles device (default CPU; use GPU on a workstation)
+  --moon                 add a moon (off by default: it would wash out the Milky Way)
   --sun-elevation DEG    Nishita sun elevation (default -4: civil twilight)
   --sun-azimuth DEG      Nishita sunset compass azimuth (default 290 = WNW)
   --hdri NAME            Poly Haven id (default kloppenheim_06_puresky)
@@ -51,7 +54,10 @@ def parse_args():
     p.add_argument("--camera", default="aerial", choices=sorted(camera_rig.PRESETS))
     p.add_argument("--lens", type=float, default=None)
     p.add_argument("--fstop", type=float, default=None)
-    p.add_argument("--sky", default="nishita", choices=["nishita", "hdri"])
+    p.add_argument("--sky", default="milkyway", choices=["milkyway", "nishita", "hdri"])
+    p.add_argument("--sky-file", default=os.path.join(C.HDRI_DIR, "fermilab_night_sky.exr"), help="pre-oriented night-sky EXR from tools/make_sky_hdri.py (milkyway mode)")
+    p.add_argument("--device", default="CPU", choices=["CPU", "GPU"], help="Cycles compute device (GPU auto-selects OPTIX/CUDA/HIP/METAL/ONEAPI)")
+    p.add_argument("--moon", action="store_true", help="add a moon (off by default: it would wash out the Milky Way)")
     p.add_argument("--sun-elevation", type=float, default=-4.0, help="Nishita sun elevation in degrees (negative = below horizon)")
     p.add_argument("--sun-azimuth", type=float, default=290.0, help="Nishita sunset compass azimuth (deg from north, clockwise)")
     p.add_argument("--hdri", default="kloppenheim_06_puresky")
@@ -87,7 +93,7 @@ def hdri_path(name, res):
 def main():
     args = parse_args()
     if args.sky_strength is None:
-        args.sky_strength = 1.0 if args.sky == "nishita" else 0.12
+        args.sky_strength = {"milkyway": 1.0, "nishita": 1.0, "hdri": 0.12}[args.sky]
     t0 = time.time()
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
@@ -115,12 +121,17 @@ def main():
     print(f"[build] geometry done: {len(bpy.data.objects)} objects, {ntrees} trees, {time.time() - t0:.1f}s")
 
     # --- atmosphere -------------------------------------------------------------
-    atmosphere.build_world(hdri_path(args.hdri, args.hdri_res), mode=args.sky, strength=args.sky_strength, rotation_deg=args.sky_rot, sun_elevation_deg=args.sun_elevation, sun_azimuth_deg=args.sun_azimuth, stars=not args.no_stars)
+    sky_path = args.sky_file if args.sky == "milkyway" else hdri_path(args.hdri, args.hdri_res)
+    if args.sky == "milkyway" and not os.path.exists(sky_path):
+        print(f"[build] WARNING: {sky_path} missing -- run: blender -b --python tools/make_sky_hdri.py; falling back to nishita")
+        args.sky = "nishita"
+    atmosphere.build_world(sky_path, mode=args.sky, strength=args.sky_strength, rotation_deg=0.0 if args.sky == "milkyway" else args.sky_rot, sun_elevation_deg=args.sun_elevation, sun_azimuth_deg=args.sun_azimuth, stars=not args.no_stars)
     if not args.no_haze:
         atmosphere.build_haze(cols["atmosphere"], density=args.haze_density)
     if not args.no_fog:
         atmosphere.build_ground_fog(cols["atmosphere"], density=args.fog_density)
-    atmosphere.add_moon(cols["atmosphere"], azimuth_deg=args.moon_az, elevation_deg=args.moon_el, energy=args.moon_energy)
+    if args.moon:
+        atmosphere.add_moon(cols["atmosphere"], azimuth_deg=args.moon_az, elevation_deg=args.moon_el, energy=args.moon_energy)
 
     # --- camera -----------------------------------------------------------------
     w, h = (int(v) for v in args.res.lower().split("x"))
@@ -130,7 +141,7 @@ def main():
         camera_rig.add_foreground_grass(cam, cols["cameras"])
 
     # --- render setup -------------------------------------------------------------
-    postfx.configure_cycles(scene, samples=args.samples, time_limit=args.time_limit, threads=args.threads)
+    postfx.configure_cycles(scene, samples=args.samples, time_limit=args.time_limit, threads=args.threads, device=args.device)
     postfx.configure_output(scene, width=w, height=h, path=os.path.abspath(args.out), exposure=args.exposure)
     postfx.build_compositor(scene)
 

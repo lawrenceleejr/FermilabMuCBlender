@@ -10,10 +10,29 @@ import bpy
 from . import common as C
 
 
-def configure_cycles(scene, *, samples, adaptive=True, time_limit=0, denoise=True, threads=0):
+def enable_gpu() -> bool:
+    """Turn on the best available Cycles GPU backend. Returns True on success."""
+    prefs = bpy.context.preferences.addons["cycles"].preferences
+    for backend in ("OPTIX", "CUDA", "HIP", "METAL", "ONEAPI"):
+        try:
+            prefs.compute_device_type = backend
+        except TypeError:
+            continue
+        prefs.get_devices()
+        gpus = [d for d in prefs.devices if d.type != "CPU"]
+        if gpus:
+            for d in prefs.devices:
+                d.use = d.type != "CPU"
+            print(f"[postfx] GPU backend: {backend} ({', '.join(g.name for g in gpus)})")
+            return True
+    print("[postfx] no GPU backend available; rendering on CPU")
+    return False
+
+
+def configure_cycles(scene, *, samples, adaptive=True, time_limit=0, denoise=True, threads=0, device="CPU"):
     scene.render.engine = "CYCLES"
     cy = scene.cycles
-    cy.device = "CPU"
+    cy.device = "GPU" if device == "GPU" and enable_gpu() else "CPU"
     cy.samples = samples
     cy.use_adaptive_sampling = adaptive
     cy.adaptive_threshold = 0.012
@@ -27,6 +46,11 @@ def configure_cycles(scene, *, samples, adaptive=True, time_limit=0, denoise=Tru
         cy.denoising_quality = "HIGH"
     except Exception as e:  # noqa: BLE001
         print("[postfx] denoiser config:", e)
+    if cy.device == "GPU":
+        try:
+            cy.denoising_use_gpu = True
+        except Exception:  # noqa: BLE001
+            pass
     cy.use_light_tree = True
     cy.use_guiding = True             # path guiding: big win for fog + many small lights on CPU
     cy.use_surface_guiding = True

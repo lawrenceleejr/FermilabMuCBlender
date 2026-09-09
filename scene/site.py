@@ -78,6 +78,7 @@ def prairie_material():
     # tallgrass tint (Sept: tan/gold with green) and dusk darkening
     _, tinted = C.mix_color(nt, 1.0, mixed, (0.80, 0.66, 0.42, 1.0), "MULTIPLY")
     nt.links.new(tinted, bsdf.inputs["Base Color"])
+    bsdf.inputs["Specular IOR Level"].default_value = 0.12   # grass has almost no grazing sheen; keeps the far horizon dark
     if g.get("Roughness"):
         gr = img(g["Roughness"], True)
         nt.links.new(gr.outputs["Color"], bsdf.inputs["Roughness"])

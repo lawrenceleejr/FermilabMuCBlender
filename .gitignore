@@ -5,3 +5,4 @@ assets/hdri/
 out/
 *.blend1
 __pycache__/
+assets/starmap/
