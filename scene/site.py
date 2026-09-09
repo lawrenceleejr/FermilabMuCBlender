@@ -124,7 +124,7 @@ def build_rings(col, prairie, water):
 def build_collider(col, concrete):
     """The proposed muon collider: 10 km luminous ring, two detector halls,
     and the proton-driver linac feeding the western crossing."""
-    core = C.emissive_material("collider_beam", COLLIDER_COLOR, 8.0, camera_strength=55.0)
+    core = C.emissive_material("collider_beam", COLLIDER_COLOR, 8.0, camera_strength=38.0)
     C.tube_mesh("muon_collider_ring", C.circle_points(MC_C, MC_R, n=900, z=2.2), 1.0, sides=10, col=col, material=core, closed=True)
     # soft outer sheath (dimmer, wider) gives the line body without blowing out
     sheath = C.emissive_material("collider_sheath", (0.35, 0.75, 1.0), 0.5, camera_strength=2.0)
