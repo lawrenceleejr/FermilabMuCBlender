@@ -18,7 +18,7 @@ Run inside Blender's Python (for EXR I/O):
         [--no-skyglow] [--scale S]
 
 The default instant is 19:45 CDT on 9 Sep 2026 (00:45 UTC the 10th): the sun
-is 6.8 deg below the horizon in the WNW -- late civil twilight, so the sky
+is 6.8 deg below the horizon in the WNW -- early nautical twilight, so the sky
 still lights the landscape -- while the galactic centre stands 19 deg up in
 the south. The script prints the solar position and writes it to a JSON
 sidecar beside the EXR so the scene can place its twilight sun at the same
@@ -320,7 +320,7 @@ def build(args) -> None:
 def main() -> None:
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--utc", default="2026-09-10T00:45", help="UTC instant (ISO). Default = 19:45 CDT, 9 Sep 2026: sun 6.8 deg below the horizon (late civil twilight), galactic centre 19 deg up in the south")
+    p.add_argument("--utc", default="2026-09-10T00:45", help="UTC instant (ISO). Default = 19:45 CDT, 9 Sep 2026: sun 6.8 deg below the horizon (early nautical twilight), galactic centre 19 deg up in the south")
     p.add_argument("--res", default="8k", choices=["4k", "8k", "16k"], help="NASA star-map resolution to use")
     p.add_argument("--out", default=os.path.join(HDRI_DIR, "fermilab_night_sky.exr"))
     p.add_argument("--preview", default=os.path.join(HDRI_DIR, "fermilab_night_sky_preview.png"))

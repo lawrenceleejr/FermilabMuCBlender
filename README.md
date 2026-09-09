@@ -61,7 +61,7 @@ The default instant is **19:45 CDT on 9 September 2026** (00:45 UTC the 10th):
 
 | | Altitude | Azimuth |
 |---|---|---|
-| Sun | −6.8° (late civil twilight) | 283° WNW |
+| Sun | −6.8° (early nautical twilight) | 283° WNW |
 | Galactic centre | 19° | 185° S |
 | Polaris | 41.8° | 0° N |
 
