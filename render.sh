@@ -23,7 +23,7 @@ for a in "$@"; do
   case "$a" in
     --preview) args+=(--res 640x360 --samples 48 --tree-density 0.35 --out "$HERE/out/preview.png") ;;
     --gpu)     args+=(--device GPU) ;;
-    --final)   args+=(--res 3840x2160 --samples 1024) ;;
+    --final)   args+=(--res 3840x2160 --samples 1024 --adaptive-threshold 0.005) ;;
     *) args+=("$a") ;;
   esac
 done

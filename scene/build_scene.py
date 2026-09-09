@@ -7,6 +7,7 @@ Options (after the `--`):
   --out PATH             output PNG (default renders/fermilab_muc_cover.png)
   --res WxH              resolution (default 2560x1440)
   --samples N            Cycles samples (default 512, adaptive)
+  --adaptive-threshold T Cycles noise threshold (default 0.012; 0.005 for finals)
   --time-limit SEC       stop sampling after N seconds per image (0 = off)
   --camera NAME          northeast (default) | cover (portrait) | aerial | east | aerial_wide | high | low | portrait
   --lens MM --fstop F    override the preset lens / aperture
@@ -51,6 +52,7 @@ def parse_args():
     p.add_argument("--res", default="2560x1440")
     p.add_argument("--samples", type=int, default=512)
     p.add_argument("--time-limit", type=float, default=0.0)
+    p.add_argument("--adaptive-threshold", type=float, default=0.012, help="Cycles adaptive-sampling noise threshold; lower = cleaner and slower (0.004-0.006 for finals)")
     p.add_argument("--camera", default="northeast", choices=sorted(camera_rig.PRESETS))
     p.add_argument("--lens", type=float, default=None)
     p.add_argument("--fstop", type=float, default=None)
@@ -141,7 +143,7 @@ def main():
         camera_rig.add_foreground_grass(cam, cols["cameras"])
 
     # --- render setup -------------------------------------------------------------
-    postfx.configure_cycles(scene, samples=args.samples, time_limit=args.time_limit, threads=args.threads, device=args.device)
+    postfx.configure_cycles(scene, samples=args.samples, adaptive_threshold=args.adaptive_threshold, time_limit=args.time_limit, threads=args.threads, device=args.device)
     postfx.configure_output(scene, width=w, height=h, path=os.path.abspath(args.out), exposure=args.exposure)
     postfx.build_compositor(scene)
 

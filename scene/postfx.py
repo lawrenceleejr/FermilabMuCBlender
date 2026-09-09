@@ -29,13 +29,13 @@ def enable_gpu() -> bool:
     return False
 
 
-def configure_cycles(scene, *, samples, adaptive=True, time_limit=0, denoise=True, threads=0, device="CPU"):
+def configure_cycles(scene, *, samples, adaptive=True, adaptive_threshold=0.012, time_limit=0, denoise=True, threads=0, device="CPU"):
     scene.render.engine = "CYCLES"
     cy = scene.cycles
     cy.device = "GPU" if device == "GPU" and enable_gpu() else "CPU"
     cy.samples = samples
     cy.use_adaptive_sampling = adaptive
-    cy.adaptive_threshold = 0.012
+    cy.adaptive_threshold = adaptive_threshold
     cy.adaptive_min_samples = max(16, samples // 16)
     cy.time_limit = time_limit
     cy.use_denoising = denoise
