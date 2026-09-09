@@ -8,7 +8,7 @@ Options (after the `--`):
   --res WxH              resolution (default 2560x1440)
   --samples N            Cycles samples (default 512, adaptive)
   --time-limit SEC       stop sampling after N seconds per image (0 = off)
-  --camera NAME          northeast (default) | aerial | east | aerial_wide | high | low | portrait
+  --camera NAME          northeast (default) | cover (portrait) | aerial | east | aerial_wide | high | low | portrait
   --lens MM --fstop F    override the preset lens / aperture
   --sky milkyway|nishita|hdri  real night sky from tools/make_sky_hdri.py (default), physically based twilight, or a Poly Haven HDRI
   --sky-file PATH        pre-oriented night-sky EXR (default assets/hdri/fermilab_night_sky.exr)

@@ -25,6 +25,9 @@ PRESETS = {
     "aerial_wide": dict(location=(-560.0, -520.0, 190.0), target=(120.0, 40.0, 30.0), lens=32.0, fstop=2.0),
     "high": dict(location=(-900.0, -1500.0, 520.0), target=(500.0, -300.0, 0.0), lens=35.0, fstop=2.8),
     "low": dict(location=(-330.0, -430.0, 42.0), target=(0.0, 0.0, 40.0), lens=32.0, fstop=1.4),
+    # cover format: same NE vantage, tilted up so Wilson Hall sits in the lower third
+    # and the Milky Way arch fills the upper two-thirds
+    "cover": dict(location=(240.0, 355.0, 96.0), target=(-8.0, -18.0, 132.0), lens=30.0, fstop=1.8),
     "portrait": dict(location=(-420.0, -390.0, 140.0), target=(10.0, 5.0, 40.0), lens=35.0, fstop=1.8),
 }
 

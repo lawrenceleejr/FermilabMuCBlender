@@ -18,12 +18,22 @@ for the asset fetcher. Previews render fine on a 4-core CPU; the final frame
 is meant for a GPU workstation (`--gpu` auto-selects OptiX/CUDA/HIP/Metal).
 
 ```sh
-python3 tools/fetch_assets.py                      # ~250 MB: CC0 textures, Poly Haven skies, NASA star map
-blender -b --python tools/make_sky_hdri.py -- --res 8k   # build assets/hdri/fermilab_night_sky.exr (~1 min)
-./render.sh --preview                              # 640x360 look-dev pass (~1 min on CPU)
-./render.sh --gpu --final                          # 3840x2160, 1024 spp -> renders/fermilab_muc_cover.png
-./render.sh --gpu --final --camera portrait --res 2400x3000 --out renders/fermilab_muc_cover_portrait.png
+# once per machine
+python3 tools/fetch_assets.py                            # ~250 MB: CC0 textures, Poly Haven skies, NASA star map
+blender -b --python tools/make_sky_hdri.py -- --res 8k   # -> assets/hdri/fermilab_night_sky.exr (~1 min)
+
+./render.sh --preview                                    # 640x360 look-dev pass (~1 min, CPU is fine)
+
+# final renders on a GPU workstation
+./render.sh --gpu --final                                # 3840x2160, 1024 spp -> renders/fermilab_muc_cover.png
+./render.sh --gpu --final --camera cover --res 2400x3600 \
+    --out renders/fermilab_muc_cover_portrait.png        # magazine-cover crop, Milky Way arch over the building
 ```
+
+For the 4K stills use `--res 16k` when building the sky so the star field stays
+sharp at 100 %. `--gpu` prints the backend and device names it selected; if it
+reports no GPU it falls back to CPU rather than failing. Sampling is adaptive,
+so 1024 is an upper bound -- expect well under that on most pixels.
 
 `render.sh` forwards flags to `scene/build_scene.py`; read its docstring for
 the full list (camera presets, sky mode, fog density, exposure, samples,
@@ -58,7 +68,7 @@ when rendering above 4K.
 | Accelerators | Tevatron berm (r = 1000 m) with inner cooling-pond ring and a faint amber tunnel marker; Main Injector berm; the muon collider as a 1590 m-radius emissive tube (cyan, brighter to the camera than to the scene) with a soft sheath, two detector halls at opposite interaction points, and the proton-driver linac meeting the ring at its western crossing |
 | Site | 60 km prairie plane (Grass004 x Ground037, tallgrass tint), ten lakes with Fresnel water and wind-stretched ripples, road network with wet asphalt, ~120 sodium/LED lamps, ancillary buildings with hashed lit windows, ~3,700 instanced trees in woods, hedgerows and tree lines, distant town glow on three horizons |
 | Atmosphere | Astronomically placed Milky Way sky (see below) with Chicago-area sky glow; optional physically based twilight (`--sky nishita`) or Poly Haven HDRI (`--sky hdri`); homogeneous aerial haze in an 80 km box; a 9 km ground-fog box with exponential height falloff and noise pools (anisotropic forward scattering); optional moon (`--moon`) |
-| Camera | Full-frame 32-40 mm at f/1.8, depth of field on Wilson Hall; presets `aerial` (SW, looking NE along the ring), `northeast` (over the reflecting pond toward the galactic core), `east`, `aerial_wide`, `high`, `low` (with bokeh prairie grass in the foreground), `portrait` |
+| Camera | Full-frame 30-40 mm at f/1.8, depth of field on Wilson Hall; presets `northeast` (default: over the reflecting pond toward the galactic core), `cover` (portrait crop of the same vantage), `aerial` (SW, looking NE along the ring), `east`, `aerial_wide`, `high`, `low` (with bokeh prairie grass in the foreground), `portrait` |
 | Look | Cycles with adaptive sampling, path guiding, light tree, OpenImageDenoise; AgX "Punchy"; compositor bloom (two passes), faint chromatic aberration, vignette |
 
 ## Layout
