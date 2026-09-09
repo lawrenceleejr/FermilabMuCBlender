@@ -190,10 +190,11 @@ def build_campus_boundary(col, *, width=11.0, strength=1.2, camera_strength=4.0,
     """Highlight the site boundary as a glowing ribbon lying on the ground.
 
     A flat ribbon (rather than a tube) reads as a clean line from an overhead
-    or overview camera and all but disappears edge-on from a low one, which is
-    what you want: the outline explains the site's extent in the wide shots
-    without drawing a pipe across the close ones. Kept dimmer than the collider
-    so the visual hierarchy stays collider > Tevatron > boundary.
+    or overview camera, and avoids drawing a glowing pipe across the close
+    shots. It does *not* vanish from a low camera though -- seen edge-on it
+    becomes a bright streak along the horizon -- so build_scene only builds it
+    for the cameras in BOUNDARY_CAMERAS by default. Kept dimmer than the
+    collider so the visual hierarchy stays collider > Tevatron > boundary.
     """
     mat = C.emissive_material("campus_boundary", color, strength, camera_strength=camera_strength)
     pts = CAMPUS_BOUNDARY
