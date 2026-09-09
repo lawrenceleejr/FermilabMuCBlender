@@ -19,7 +19,7 @@ from . import common as C
 TEV_C, TEV_R = (1150.0, 0.0), 1000.0                 # Tevatron main ring (6.3 km)
 MI_C, MI_RX, MI_RY = (650.0, -1600.0), 560.0, 490.0    # Main Injector (3.3 km)
 MC_C, MC_R = (1300.0, -1150.0), 1590.0                # proposed 10 km collider ring
-MC_IP_ANGLES = (200.0, 20.0)                          # detector halls (deg, opposite)
+MC_IP_ANGLES = (120.0, 300.0)                         # detector halls (deg, opposite); 120 deg sits NE of Wilson Hall, in frame
 LINAC = ((-1000.0, -1600.0), (-225.0, -1600.0))       # proton driver -> ring (west crossing)
 
 SITE_X = (-1000.0, 3450.0)   # Kirk Rd .. Eola Rd
@@ -408,6 +408,7 @@ WOODS = [
     ((-400.0, 380.0), 170.0, 110.0, 160),
     ((-150.0, -1350.0), 220.0, 120.0, 180),
     ((400.0, -2600.0), 500.0, 250.0, 420),
+    ((-420.0, -230.0), 110.0, 70.0, 140),     # copse SW of Wilson Hall: dark foreground anchor for the aerial camera
 ]
 
 

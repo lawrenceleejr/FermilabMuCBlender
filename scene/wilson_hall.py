@@ -106,8 +106,8 @@ def facade_material(concrete_tex="Concrete034_2K-JPG", *, lit_fraction=0.80, win
     uf = C.nmath(nt, "DIVIDE", u, value_b=3.0)
     pane_idx = C.nmath(nt, "FLOOR", uf.outputs[0])
     ufr = C.nmath(nt, "FRACT", uf.outputs[0])
-    m_lo = C.nmath(nt, "GREATER_THAN", ufr.outputs[0], value_b=0.035)
-    m_hi = C.nmath(nt, "LESS_THAN", ufr.outputs[0], value_b=0.965)
+    m_lo = C.nmath(nt, "GREATER_THAN", ufr.outputs[0], value_b=0.02)
+    m_hi = C.nmath(nt, "LESS_THAN", ufr.outputs[0], value_b=0.98)
     pane_open = C.nmath(nt, "MULTIPLY", m_lo.outputs[0], m_hi.outputs[0])
 
     # ends (E/W) get sparse windows; roof none
