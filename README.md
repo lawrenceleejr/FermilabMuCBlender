@@ -26,7 +26,7 @@ blender -b --python tools/make_sky_hdri.py -- --res 8k   # -> assets/hdri/fermil
 
 # final renders on a GPU workstation
 ./render.sh --gpu --final                                # 3840x2160, 1024 spp -> renders/fermilab_muc_cover.png
-./render.sh --gpu --final --camera overview \\
+./render.sh --gpu --final --camera overview \
     --out renders/fermilab_site_overview.png             # whole complex, campus boundary highlighted
 ./render.sh --gpu --final --camera cover --res 2400x3600 \
     --out renders/fermilab_muc_cover_portrait.png        # magazine-cover crop, Milky Way arch over the building
