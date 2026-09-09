@@ -134,7 +134,7 @@ def build_haze(col, *, density=3.5e-5, size=80000.0, height=1800.0, anisotropy=0
     return obj
 
 
-def build_ground_fog(col, *, center=(900.0, -450.0), size=(9000.0, 9000.0), height=170.0, density=4.5e-3, scale_height=28.0, patch_scale=300.0, anisotropy=0.55, seed=3.0):
+def build_ground_fog(col, *, center=(900.0, -450.0), size=(9000.0, 9000.0), height=170.0, density=3.2e-3, scale_height=26.0, patch_scale=300.0, anisotropy=0.62, seed=3.0):
     """Box volume: exponential height falloff x noise pools. Camera may be inside."""
     mat = bpy.data.materials.new("ground_fog")
     mat.use_nodes = True
