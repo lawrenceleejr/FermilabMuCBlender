@@ -339,7 +339,7 @@ BUILDINGS = [
 
 def build_buildings(col, concrete):
     kinds = {
-        "glass": _lit_box_material("bld_glass", (0.06, 0.07, 0.08), lit_color=C.kelvin_rgb(4300), lit_strength=1.6, band=(0.15, 0.9), lit_fraction=0.75, seed=3.0),
+        "glass": _lit_box_material("bld_glass", (0.06, 0.07, 0.08), lit_color=C.kelvin_rgb(4300), lit_strength=0.9, band=(0.2, 0.85), lit_fraction=0.45, seed=3.0),
         "office": _lit_box_material("bld_office", (0.30, 0.28, 0.25), lit_color=C.kelvin_rgb(3300), lit_strength=1.8, lit_fraction=0.55, seed=5.0),
         "industrial": _lit_box_material("bld_industrial", (0.22, 0.22, 0.21), lit_color=C.kelvin_rgb(3800), lit_strength=1.2, band=(0.55, 0.8), lit_fraction=0.25, seed=9.0),
     }

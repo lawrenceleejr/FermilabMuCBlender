@@ -99,7 +99,7 @@ def configure_output(scene, *, width, height, path, exposure=0.0, look="AgX - Pu
     scene.display_settings.display_device = "sRGB"
 
 
-def build_compositor(scene, *, bloom_strength=0.22, bloom_size=0.55, bloom_threshold=1.2, dispersion=0.012, distortion=-0.004, vignette=0.28):
+def build_compositor(scene, *, bloom_strength=0.30, bloom_size=0.65, bloom_threshold=0.8, dispersion=0.012, distortion=-0.004, vignette=0.28):
     ng = bpy.data.node_groups.new("Compositing", "CompositorNodeTree")
     ng.interface.new_socket(name="Image", in_out="OUTPUT", socket_type="NodeSocketColor")
     scene.compositing_node_group = ng
@@ -141,7 +141,7 @@ def build_compositor(scene, *, bloom_strength=0.22, bloom_size=0.55, bloom_thres
         glare2.inputs["Quality"].default_value = "High"
     except Exception:  # noqa: BLE001
         pass
-    for name, val in (("Threshold", 4.0), ("Strength", 0.12), ("Size", 0.25), ("Saturation", 0.8), ("Smoothness", 0.1)):
+    for name, val in (("Threshold", 3.0), ("Strength", 0.15), ("Size", 0.28), ("Saturation", 0.8), ("Smoothness", 0.1)):
         if name in glare2.inputs:
             glare2.inputs[name].default_value = val
     links.new(img, glare2.inputs["Image"])

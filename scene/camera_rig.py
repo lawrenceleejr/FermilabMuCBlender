@@ -21,7 +21,7 @@ PRESETS = {
     "east": dict(location=(560.0, -330.0, 120.0), target=(0.0, 0.0, 90.0), lens=40.0, fstop=1.8),
     # NE of Wilson Hall looking SW: the east-end profile over the reflecting pond, the collider
     # arc behind, and (Sept evening) the galactic centre low in the SSW above the building
-    "northeast": dict(location=(330.0, 470.0, 125.0), target=(-20.0, -30.0, 95.0), lens=32.0, fstop=1.8),
+    "northeast": dict(location=(270.0, 400.0, 110.0), target=(-10.0, -20.0, 84.0), lens=35.0, fstop=1.8),
     "aerial_wide": dict(location=(-560.0, -520.0, 190.0), target=(120.0, 40.0, 30.0), lens=32.0, fstop=2.0),
     "high": dict(location=(-900.0, -1500.0, 520.0), target=(500.0, -300.0, 0.0), lens=35.0, fstop=2.8),
     "low": dict(location=(-330.0, -430.0, 42.0), target=(0.0, 0.0, 40.0), lens=32.0, fstop=1.4),

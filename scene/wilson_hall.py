@@ -306,8 +306,10 @@ def build(col: bpy.types.Collection, *, floodlights=True):
             C.spot_light(f"wh_flood_s{i}", (x, y, 1.0), (x, -22.0, 42.0), power=42000, kelvin=3000, size_deg=58, blend=0.55, radius=0.6, col=col)
         for i, y in enumerate((-20.0, 20.0)):
             C.spot_light(f"wh_flood_w{i}", (-115.0, y, 1.0), (-42.0, y * 0.6, 44.0), power=36000, kelvin=3100, size_deg=55, blend=0.55, radius=0.6, col=col)
-        # a cooler wash on the north face so it is not black from behind
-        C.spot_light("wh_flood_n", (10.0, 82.0, 1.0), (5.0, 22.0, 40.0), power=26000, kelvin=3800, size_deg=60, blend=0.6, radius=0.6, col=col)
+        # north face wash and the pond-side (east) floods that light the atrium end
+        C.spot_light("wh_flood_n", (10.0, 82.0, 1.0), (5.0, 22.0, 40.0), power=30000, kelvin=3400, size_deg=60, blend=0.6, radius=0.6, col=col)
+        for i, y in enumerate((-24.0, 24.0)):
+            C.spot_light(f"wh_flood_e{i}", (104.0, y, 1.0), (42.0, y * 0.5, 46.0), power=34000, kelvin=3000, size_deg=52, blend=0.55, radius=0.6, col=col)
     # interior atrium glow
     for i, z in enumerate((14.0, 34.0, 54.0)):
         for x in (-LENGTH / 2 + 8.0, LENGTH / 2 - 8.0):

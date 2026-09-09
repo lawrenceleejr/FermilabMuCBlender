@@ -61,7 +61,7 @@ def main() -> int:
     d.text((6, main_h + crop_size + 4), f"mean {mean:.3f}  p50 {p50:.3f}  p90 {p90:.3f}  p99 {p99:.3f}   clipped white {clip_hi:.2f}%  black {clip_lo:.2f}%", fill=(230, 230, 230))
     out = a.out or a.image.rsplit(".", 1)[0] + "_sheet.png"
     sheet.save(out)
-    print("wrote", out)
+    print("wrote", out, flush=True)
     return 0
 
 
