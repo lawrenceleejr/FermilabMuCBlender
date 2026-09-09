@@ -25,7 +25,7 @@ LINAC = ((-1000.0, -1600.0), (-225.0, -1600.0))       # proton driver -> ring (w
 SITE_X = (-1000.0, 3450.0)   # Kirk Rd .. Eola Rd
 SITE_Y = (-4000.0, 1800.0)   # south boundary .. Butterfield Rd
 
-COLLIDER_COLOR = (0.25, 0.72, 1.0)
+COLLIDER_COLOR = (0.16, 0.62, 1.0)
 SODIUM = C.kelvin_rgb(2150)
 LED_WHITE = C.kelvin_rgb(4200)
 
@@ -118,17 +118,17 @@ def build_rings(col, prairie, water):
     C.ring_mesh("main_injector_berm", MI_C, MI_RX, BERM_PROFILE, ry=MI_RY, segments=360, col=col, material=prairie)
     # faint amber marker along the Tevatron crest: the reused tunnel
     tev_line = C.emissive_material("tevatron_tunnel_glow", (1.0, 0.62, 0.30), 0.5, camera_strength=1.6)
-    C.tube_mesh("tevatron_tunnel_line", C.circle_points(TEV_C, TEV_R, n=480, z=6.6), 0.9, sides=6, col=col, material=tev_line, closed=True)
+    C.tube_mesh("tevatron_tunnel_line", C.circle_points(TEV_C, TEV_R, n=480, z=6.6), 0.6, sides=6, col=col, material=tev_line, closed=True)
 
 
 def build_collider(col, concrete):
     """The proposed muon collider: 10 km luminous ring, two detector halls,
     and the proton-driver linac feeding the western crossing."""
-    core = C.emissive_material("collider_beam", COLLIDER_COLOR, 5.0, camera_strength=22.0)
-    C.tube_mesh("muon_collider_ring", C.circle_points(MC_C, MC_R, n=900, z=2.2), 2.6, sides=12, col=col, material=core, closed=True)
+    core = C.emissive_material("collider_beam", COLLIDER_COLOR, 8.0, camera_strength=55.0)
+    C.tube_mesh("muon_collider_ring", C.circle_points(MC_C, MC_R, n=900, z=2.2), 1.0, sides=10, col=col, material=core, closed=True)
     # soft outer sheath (dimmer, wider) gives the line body without blowing out
-    sheath = C.emissive_material("collider_sheath", (0.45, 0.80, 1.0), 0.35, camera_strength=0.9)
-    C.tube_mesh("muon_collider_sheath", C.circle_points(MC_C, MC_R, n=900, z=2.2), 5.0, sides=12, col=col, material=sheath, closed=True)
+    sheath = C.emissive_material("collider_sheath", (0.35, 0.75, 1.0), 0.5, camera_strength=2.0)
+    C.tube_mesh("muon_collider_sheath", C.circle_points(MC_C, MC_R, n=900, z=2.2), 2.3, sides=10, col=col, material=sheath, closed=True)
 
     hall_glow = C.emissive_material("hall_glow", COLLIDER_COLOR, 3.0, camera_strength=10.0)
     white = C.emissive_material("hall_white", LED_WHITE, 12.0)
@@ -147,7 +147,7 @@ def build_collider(col, concrete):
 
     linac = C.emissive_material("linac_beam", (0.85, 0.95, 1.0), 1.5, camera_strength=5.0)
     (x0, y0), (x1, y1) = LINAC
-    C.tube_mesh("proton_driver_linac", [(x0, y0, 1.8), (x1, y1, 1.8)], 1.4, sides=8, col=col, material=linac)
+    C.tube_mesh("proton_driver_linac", [(x0, y0, 1.8), (x1, y1, 1.8)], 0.8, sides=8, col=col, material=linac)
     C.box_object("target_hall", (40.0, 18.0, 10.0), (x0 + 0.62 * (x1 - x0), y0 + 22.0, 0), col=col, material=concrete)
 
 
@@ -339,9 +339,9 @@ BUILDINGS = [
 
 def build_buildings(col, concrete):
     kinds = {
-        "glass": _lit_box_material("bld_glass", (0.06, 0.07, 0.08), lit_color=C.kelvin_rgb(4300), lit_strength=0.9, band=(0.2, 0.85), lit_fraction=0.45, seed=3.0),
-        "office": _lit_box_material("bld_office", (0.30, 0.28, 0.25), lit_color=C.kelvin_rgb(3300), lit_strength=1.8, lit_fraction=0.55, seed=5.0),
-        "industrial": _lit_box_material("bld_industrial", (0.22, 0.22, 0.21), lit_color=C.kelvin_rgb(3800), lit_strength=1.2, band=(0.55, 0.8), lit_fraction=0.25, seed=9.0),
+        "glass": _lit_box_material("bld_glass", (0.06, 0.07, 0.08), lit_color=C.kelvin_rgb(4300), lit_strength=0.55, band=(0.3, 0.7), lit_fraction=0.35, seed=3.0),
+        "office": _lit_box_material("bld_office", (0.30, 0.28, 0.25), lit_color=C.kelvin_rgb(3300), lit_strength=0.7, band=(0.4, 0.68), lit_fraction=0.3, seed=5.0),
+        "industrial": _lit_box_material("bld_industrial", (0.22, 0.22, 0.21), lit_color=C.kelvin_rgb(3800), lit_strength=0.55, band=(0.58, 0.76), lit_fraction=0.16, seed=9.0),
     }
     unit = C.box_mesh_data("unit_box")
     for name, (x, y), size, rot, kind in BUILDINGS:
@@ -362,7 +362,7 @@ def build_buildings(col, concrete):
         C.instance(f"tev_service_lamp_{k}", lamp_me, col=col, location=(x + 12 * math.cos(a + 1.2), y + 12 * math.sin(a + 1.2), 8.0))
     # Fermilab Village (former farmhouses, east side): warm scattered dwellings
     rng = random.Random(7)
-    house = _lit_box_material("bld_house", (0.35, 0.30, 0.26), lit_color=C.kelvin_rgb(2900), lit_strength=1.5, band=(0.3, 0.7), lit_fraction=0.6, seed=11.0)
+    house = _lit_box_material("bld_house", (0.35, 0.30, 0.26), lit_color=C.kelvin_rgb(2900), lit_strength=0.7, band=(0.35, 0.65), lit_fraction=0.45, seed=11.0)
     for i in range(34):
         x = 2850.0 + rng.uniform(-260, 260)
         y = 250.0 + rng.uniform(-220, 220)

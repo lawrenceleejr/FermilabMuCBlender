@@ -39,7 +39,7 @@ def y_inner(t: float) -> float:
 # --------------------------------------------------------------------------- #
 # materials
 # --------------------------------------------------------------------------- #
-def facade_material(concrete_tex="Concrete034_2K-JPG", *, lit_fraction=0.80, window_emission=2.2):
+def facade_material(concrete_tex="Concrete034_2K-JPG", *, lit_fraction=0.42, window_emission=0.85):
     """Concrete + ribbon windows driven by object-space position.
 
     Window band: 22 %..75 % of each floor height. Panes 3 m wide with thin
@@ -95,19 +95,19 @@ def facade_material(concrete_tex="Concrete034_2K-JPG", *, lit_fraction=0.80, win
     zf = C.nmath(nt, "DIVIDE", pos.outputs["Z"], value_b=FLOOR_H)
     floor_idx = C.nmath(nt, "FLOOR", zf.outputs[0])
     frac = C.nmath(nt, "FRACT", zf.outputs[0])
-    band_lo = C.nmath(nt, "GREATER_THAN", frac.outputs[0], value_b=0.22)
-    band_hi = C.nmath(nt, "LESS_THAN", frac.outputs[0], value_b=0.75)
+    band_lo = C.nmath(nt, "GREATER_THAN", frac.outputs[0], value_b=0.34)
+    band_hi = C.nmath(nt, "LESS_THAN", frac.outputs[0], value_b=0.64)
     band = C.nmath(nt, "MULTIPLY", band_lo.outputs[0], band_hi.outputs[0])
 
     # facade-parallel coordinate: x on N/S faces, y on E/W ends
     ny_abs = C.nmath(nt, "ABSOLUTE", nrm.outputs["Y"])
     is_ns = C.nmath(nt, "GREATER_THAN", ny_abs.outputs[0], value_b=0.5)
     _, u = C.mix_float(nt, is_ns.outputs[0], pos.outputs["Y"], pos.outputs["X"])
-    uf = C.nmath(nt, "DIVIDE", u, value_b=3.0)
+    uf = C.nmath(nt, "DIVIDE", u, value_b=2.0)
     pane_idx = C.nmath(nt, "FLOOR", uf.outputs[0])
     ufr = C.nmath(nt, "FRACT", uf.outputs[0])
-    m_lo = C.nmath(nt, "GREATER_THAN", ufr.outputs[0], value_b=0.02)
-    m_hi = C.nmath(nt, "LESS_THAN", ufr.outputs[0], value_b=0.98)
+    m_lo = C.nmath(nt, "GREATER_THAN", ufr.outputs[0], value_b=0.11)
+    m_hi = C.nmath(nt, "LESS_THAN", ufr.outputs[0], value_b=0.89)
     pane_open = C.nmath(nt, "MULTIPLY", m_lo.outputs[0], m_hi.outputs[0])
 
     # ends (E/W) get sparse windows; roof none
@@ -154,12 +154,12 @@ def facade_material(concrete_tex="Concrete034_2K-JPG", *, lit_fraction=0.80, win
     wn_f = nt.nodes.new("ShaderNodeTexWhiteNoise")
     wn_f.noise_dimensions = "3D"
     nt.links.new(comb_f.outputs["Vector"], wn_f.inputs["Vector"])
-    floor_lit = C.nmath(nt, "GREATER_THAN", wn_f.outputs["Value"], value_b=0.22)
+    floor_lit = C.nmath(nt, "GREATER_THAN", wn_f.outputs["Value"], value_b=0.42)
     pane_lit = C.nmath(nt, "GREATER_THAN", wn.outputs["Value"], value_b=1.0 - lit_fraction)
     lit = C.nmath(nt, "MULTIPLY", floor_lit.outputs[0], pane_lit.outputs[0])
     # brightness + colour temperature per office
-    bright = C.nmath(nt, "MULTIPLY_ADD", wn2.outputs["Value"], value_b=0.9)
-    bright.inputs[2].default_value = 0.45
+    bright = C.nmath(nt, "MULTIPLY_ADD", wn2.outputs["Value"], value_b=0.7)
+    bright.inputs[2].default_value = 0.55
     kel = C.nmath(nt, "MULTIPLY_ADD", wn.outputs["Value"], value_b=1500.0)
     kel.inputs[2].default_value = 2700.0
     warm = C.blackbody(nt, kel.outputs[0])
@@ -240,7 +240,7 @@ def _atrium_glass(name, x, mat, col):
 
 def _balconies(col):
     """Lit floor edges inside the atrium (what you see glowing through the glass)."""
-    mat = C.emissive_material("wh_balcony_glow", C.kelvin_rgb(3000), 3.5)
+    mat = C.emissive_material("wh_balcony_glow", C.kelvin_rgb(3000), 1.6)
     bm = bmesh.new()
     for f in range(1, FLOORS):
         z = f * FLOOR_H + 0.25
@@ -291,9 +291,12 @@ def build(col: bpy.types.Collection, *, floodlights=True):
     C.box_object("wh_west_link", (28.0, 30.0, 9.0), (-LENGTH / 2 - 14.0, 0, 0), col=col, material=concrete_dark)
 
     # plaza + reflecting pond (east) + hyperbolic obelisk
-    C.box_object("wh_plaza", (320.0, 170.0, 0.25), (40.0, 0.0, -0.05), col=col, material=plaza_mat)
+    C.box_object("wh_plaza", (150.0, 96.0, 0.25), (18.0, 0.0, -0.04), col=col, material=plaza_mat)
+    # mown lawn skirt: same prairie shader family but a touch greener/darker, breaks the slab edge
+    lawn = C.flat_material("wh_lawn", (0.030, 0.042, 0.020), roughness=0.95)
+    C.box_object("wh_lawn_skirt", (300.0, 200.0, 0.18), (30.0, 0.0, -0.10), col=col, material=lawn)
     water = C.water_material("wh_pond_water", ripple_scale=2.0, ripple_strength=0.04)
-    C.box_object("wh_pond_curb", (128.0, 66.0, 0.6), (120.0, 0.0, 0.0), col=col, material=concrete_dark)
+    C.box_object("wh_pond_curb", (127.0, 65.0, 0.5), (120.0, 0.0, 0.0), col=col, material=concrete_dark)
     bm = C.box_bmesh(124.0, 62.0, 0.2)
     C.bmesh_object("wh_reflecting_pond", bm, col=col, material=water, location=(120.0, 0.0, 0.45))
     obelisk_mat = C.flat_material("obelisk", (0.9, 0.9, 0.9), roughness=0.4)
@@ -303,13 +306,13 @@ def build(col: bpy.types.Collection, *, floodlights=True):
     if floodlights:
         # warm architectural floods raking up the south face and the west end
         for i, (x, y) in enumerate(((-24.0, -78.0), (24.0, -78.0))):
-            C.spot_light(f"wh_flood_s{i}", (x, y, 1.0), (x, -22.0, 42.0), power=42000, kelvin=3000, size_deg=58, blend=0.55, radius=0.6, col=col)
+            C.spot_light(f"wh_flood_s{i}", (x, y, 1.0), (x, -22.0, 42.0), power=90000, kelvin=3000, size_deg=58, blend=0.55, radius=0.6, col=col)
         for i, y in enumerate((-20.0, 20.0)):
-            C.spot_light(f"wh_flood_w{i}", (-115.0, y, 1.0), (-42.0, y * 0.6, 44.0), power=36000, kelvin=3100, size_deg=55, blend=0.55, radius=0.6, col=col)
+            C.spot_light(f"wh_flood_w{i}", (-115.0, y, 1.0), (-42.0, y * 0.6, 44.0), power=70000, kelvin=3100, size_deg=55, blend=0.55, radius=0.6, col=col)
         # north face wash and the pond-side (east) floods that light the atrium end
-        C.spot_light("wh_flood_n", (10.0, 82.0, 1.0), (5.0, 22.0, 40.0), power=30000, kelvin=3400, size_deg=60, blend=0.6, radius=0.6, col=col)
+        C.spot_light("wh_flood_n", (10.0, 82.0, 1.0), (5.0, 22.0, 40.0), power=85000, kelvin=3400, size_deg=62, blend=0.6, radius=0.8, col=col)
         for i, y in enumerate((-24.0, 24.0)):
-            C.spot_light(f"wh_flood_e{i}", (104.0, y, 1.0), (42.0, y * 0.5, 46.0), power=34000, kelvin=3000, size_deg=52, blend=0.55, radius=0.6, col=col)
+            C.spot_light(f"wh_flood_e{i}", (104.0, y, 1.0), (40.0, y * 0.5, 48.0), power=80000, kelvin=3000, size_deg=54, blend=0.55, radius=0.8, col=col)
     # interior atrium glow
     for i, z in enumerate((14.0, 34.0, 54.0)):
         for x in (-LENGTH / 2 + 8.0, LENGTH / 2 - 8.0):
