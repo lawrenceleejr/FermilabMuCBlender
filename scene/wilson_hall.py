@@ -316,5 +316,5 @@ def build(col: bpy.types.Collection, *, floodlights=True):
     # interior atrium glow
     for i, z in enumerate((14.0, 34.0, 54.0)):
         for x in (-LENGTH / 2 + 8.0, LENGTH / 2 - 8.0):
-            C.point_light(f"wh_atrium_l{i}_{'e' if x > 0 else 'w'}", (x, 0.0, z), power=3000, kelvin=3000, radius=2.0, col=col)
+            C.point_light(f"wh_atrium_l{i}_{'e' if x > 0 else 'w'}", (x, 0.0, z), power=1400, kelvin=3000, radius=5.0, col=col)
     return north

@@ -27,6 +27,9 @@ PRESETS = {
     "low": dict(location=(-330.0, -430.0, 42.0), target=(0.0, 0.0, 40.0), lens=32.0, fstop=1.4),
     # cover format: same NE vantage, tilted up so Wilson Hall sits in the lower third
     # and the Milky Way arch fills the upper two-thirds
+    # high NE overlook: the whole site laid out to the SW -- Wilson Hall left of centre,
+    # the collider ring sweeping through the middle distance, galactic centre in the SSW sky
+    "overlook": dict(location=(760.0, 1020.0, 330.0), target=(500.0, -520.0, 40.0), lens=28.0, fstop=2.2),
     "cover": dict(location=(240.0, 355.0, 96.0), target=(-8.0, -18.0, 132.0), lens=30.0, fstop=1.8),
     "portrait": dict(location=(-420.0, -390.0, 140.0), target=(10.0, 5.0, 40.0), lens=35.0, fstop=1.8),
 }
