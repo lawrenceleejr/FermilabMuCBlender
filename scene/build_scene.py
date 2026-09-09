@@ -29,7 +29,7 @@ Options (after the `--`):
   --hdri-res 2k|4k       which downloaded resolution to use (default 4k, falls back)
   --sky-strength S       sky multiplier (default 1.0 nishita / 0.12 hdri)
   --sky-rot DEG          rotate the sky about Z (default 161.6: sunset glow at WNW)
-  --exposure EV          view exposure (default 1.2 twilight / 0.95 milkyway)
+  --exposure EV          view exposure (default 1.6 twilight / 0.95 milkyway)
   --fog-density D        ground fog peak density per metre (default 3.2e-3)
   --no-fog               disable the ground-fog volume
   --no-haze              disable the aerial haze volume (--haze-density D to tune)
@@ -88,7 +88,7 @@ def parse_args():
     p.add_argument("--fog-density", type=float, default=3.2e-3)
     p.add_argument("--no-fog", action="store_true")
     p.add_argument("--no-haze", action="store_true")
-    p.add_argument("--haze-density", type=float, default=4.5e-5)
+    p.add_argument("--haze-density", type=float, default=3.0e-5)
     p.add_argument("--no-stars", action="store_true")
     p.add_argument("--tree-density", type=float, default=1.0)
     p.add_argument("--no-grass", action="store_true")
@@ -129,7 +129,7 @@ def main():
         args.sky_strength = {"twilight": 1.0, "milkyway": 1.0, "nishita": 1.0, "hdri": 0.12}[args.sky]
     if args.exposure is None:
         # twilight is orders of magnitude brighter than night, so it needs far less lift
-        args.exposure = {"twilight": 1.2, "nishita": 1.2, "milkyway": 0.95, "hdri": 0.6}[args.sky]
+        args.exposure = {"twilight": 1.6, "nishita": 1.6, "milkyway": 0.95, "hdri": 0.6}[args.sky]
     t0 = time.time()
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene

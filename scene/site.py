@@ -100,12 +100,18 @@ def prairie_material():
     cell = nt.nodes.new("ShaderNodeTexWhiteNoise")
     cell.noise_dimensions = "3D"
     nt.links.new(vor.outputs["Position"], cell.inputs["Vector"])
-    parcel = C.nmath(nt, "MULTIPLY_ADD", cell.outputs["Value"], value_b=0.60)
-    parcel.inputs[2].default_value = 0.70              # 0.70 .. 1.30
+    parcel = C.nmath(nt, "MULTIPLY_ADD", cell.outputs["Value"], value_b=0.80)
+    parcel.inputs[2].default_value = 0.60              # 0.60 .. 1.40
     _, parcelled = C.mix_color(nt, 1.0, mixed, parcel.outputs[0], "MULTIPLY")
 
-    # tallgrass tint (Sept: tan/gold with green) and dusk darkening
-    _, tinted = C.mix_color(nt, 1.0, parcelled, (0.80, 0.66, 0.42, 1.0), "MULTIPLY")
+    # ...and its own hue: September tallgrass and stubble run tan/gold, mown grass
+    # and soybean parcels stay green, so mix the two per cell.
+    cell_hue = nt.nodes.new("ShaderNodeTexWhiteNoise")
+    cell_hue.noise_dimensions = "4D"
+    cell_hue.inputs["W"].default_value = 3.7
+    nt.links.new(vor.outputs["Position"], cell_hue.inputs["Vector"])
+    _, field_tint = C.mix_color(nt, cell_hue.outputs["Value"], (0.84, 0.68, 0.40, 1.0), (0.50, 0.66, 0.38, 1.0))
+    _, tinted = C.mix_color(nt, 1.0, parcelled, field_tint, "MULTIPLY")
     nt.links.new(tinted, bsdf.inputs["Base Color"])
     bsdf.inputs["Specular IOR Level"].default_value = 0.12   # grass has almost no grazing sheen; keeps the far horizon dark
     if g.get("Roughness"):

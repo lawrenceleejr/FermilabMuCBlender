@@ -57,16 +57,19 @@ light-pollution domes of Chicago, Naperville, Aurora and the Fox Valley
 towns, and writes an equirectangular EXR in Blender's world convention plus a
 JSON sidecar.
 
-The default instant is **19:45 CDT on 9 September 2026** (00:45 UTC the 10th):
+The default instant is **19:32 CDT on 9 September 2026** (00:32 UTC the 10th):
 
 | | Altitude | Azimuth |
 |---|---|---|
-| Sun | −6.8° (early nautical twilight) | 283° WNW |
-| Galactic centre | 19° | 185° S |
+| Sun | −4.4° (civil twilight) | 281° WNW |
+| Galactic centre | 19° | 181° S |
 | Polaris | 41.8° | 0° N |
 
-That is the moment the scene renders by default: the sky still lights the
-landscape, and the Milky Way is up in the south. The script prints the whole
+That is the moment the scene renders by default: a warm band still sits along
+the western horizon, there is enough skylight to read the prairie, and the
+galactic centre is up in the south. Note that a real camera would not record
+the Milky Way this early in twilight — the star field is added at full
+strength so it stays visible, and `--star-scale` dials that back. The script prints the whole
 reference table and verifies that each bright star lands on a bright pixel of
 the output, so the orientation is checked rather than assumed. Move the
 instant with `--utc 2026-07-20T04:00` (any ISO time) and the scene follows —
