@@ -1,13 +1,23 @@
-"""Sky, moon, haze and ground fog.
+"""Sky, haze, ground fog and moon.
 
-* World: Poly Haven blue-hour HDRI (dimmed, rotated) + procedural star field
-  that only shows where the sky is dark, + a thin homogeneous haze volume for
-  aerial perspective.
-* Ground fog: a large box volume whose density decays exponentially with
-  height and is broken into pools by low-frequency noise. Forward scattering
-  (anisotropy) makes the collider beam and lamps bloom in the mist.
-* Moon: a visible disc far away plus a matching sun lamp for silver
-  backlight on fog and water.
+`build_world` supports four sky modes:
+
+* ``twilight`` (default) -- physically based Nishita sky with the sun a few
+  degrees below the horizon, **plus** the real star field from
+  ``tools/make_sky_hdri.py`` added on top. The twilight sky supplies the
+  ambient light that makes the landscape readable; the stars survive only
+  where it is dark, which is what actually happens during nautical twilight.
+* ``milkyway`` -- the star-field HDRI alone: full astronomical night.
+* ``nishita`` -- the twilight sky alone, no stars.
+* ``hdri`` -- a Poly Haven sky HDRI, rotated by ``rotation_deg``.
+
+The star-field HDRI is already oriented in the local horizon frame, so it is
+never rotated; the sun elevation/azimuth should come from the same instant
+that generated it (``build_scene`` reads them from its JSON sidecar).
+
+Aerial haze and ground fog are bounded box volumes, not World volumes: Cycles
+treats a World volume as infinite, which attenuates the background and every
+sun lamp to nothing.
 """
 from __future__ import annotations
 
@@ -24,11 +34,41 @@ from . import common as C
 NISHITA_ROT_OFFSET = 0.0
 
 
-def build_world(hdri_path: str, *, mode="milkyway", strength=1.0, rotation_deg=0.0, sun_elevation_deg=-4.0, sun_azimuth_deg=290.0, stars=True, star_strength=6.0):
-    """World shader. mode: "milkyway" (HDRI already in the local horizon frame,
-    from tools/make_sky_hdri.py), "hdri" (Poly Haven sky, rotated), or
-    "nishita" (physically based twilight)."""
-    world = bpy.data.worlds.new("dusk")
+def _nishita_sky(nt, sun_elevation_deg, sun_azimuth_deg):
+    """Physically based sky. `sun_azimuth_deg` is a compass bearing (0 = north)."""
+    sk = nt.nodes.new("ShaderNodeTexSky")
+    sk.sky_type = "MULTIPLE_SCATTERING"
+    sk.sun_disc = sun_elevation_deg > 0.0     # below the horizon there is no disc to draw
+    sk.sun_elevation = math.radians(sun_elevation_deg)
+    sk.sun_rotation = math.radians(sun_azimuth_deg) + NISHITA_ROT_OFFSET
+    sk.altitude = 220.0                       # Batavia IL is ~220 m above sea level
+    sk.air_density = 1.0
+    sk.ozone_density = 1.6                    # more ozone deepens the twilight blue
+    return sk.outputs["Color"]
+
+
+def _env_sky(nt, path, vector_socket):
+    env = nt.nodes.new("ShaderNodeTexEnvironment")
+    env.image = bpy.data.images.load(path, check_existing=True)
+    env.interpolation = "Cubic"
+    nt.links.new(vector_socket, env.inputs["Vector"])
+    return env.outputs["Color"]
+
+
+def build_world(
+    sky_path: str,
+    *,
+    mode="twilight",
+    strength=1.0,
+    rotation_deg=0.0,
+    sun_elevation_deg=-6.8,
+    sun_azimuth_deg=283.0,
+    star_scale=1.0,
+    stars=False,
+    star_strength=6.0,
+):
+    """Build the World shader. See the module docstring for the modes."""
+    world = bpy.data.worlds.new("sky")
     world.use_nodes = True
     bpy.context.scene.world = world
     nt = world.node_tree
@@ -38,37 +78,33 @@ def build_world(hdri_path: str, *, mode="milkyway", strength=1.0, rotation_deg=0
     bg = nt.nodes.new("ShaderNodeBackground")
     tc = nt.nodes.new("ShaderNodeTexCoord")
     mp = nt.nodes.new("ShaderNodeMapping")
-    mp.inputs["Rotation"].default_value = (0.0, 0.0, math.radians(rotation_deg))
+    # the star map is pre-oriented, so only a Poly Haven HDRI is ever rotated
+    mp.inputs["Rotation"].default_value = (0.0, 0.0, math.radians(rotation_deg if mode == "hdri" else 0.0))
     nt.links.new(tc.outputs["Generated"], mp.inputs["Vector"])
 
-    if mode == "milkyway" and os.path.exists(hdri_path):
-        env = nt.nodes.new("ShaderNodeTexEnvironment")
-        env.image = bpy.data.images.load(hdri_path, check_existing=True)
-        env.interpolation = "Cubic"
-        nt.links.new(mp.outputs["Vector"], env.inputs["Vector"])
-        sky = env.outputs["Color"]
-        stars = False  # real stars are in the map
-    elif mode == "nishita" or not os.path.exists(hdri_path):
-        # physically based twilight: sun just below the horizon -> deep blue
-        # gradient with a warm band towards the sunset azimuth, no cloud deck
-        sk = nt.nodes.new("ShaderNodeTexSky")
-        sk.sky_type = "MULTIPLE_SCATTERING"
-        sk.sun_disc = False
-        sk.sun_elevation = math.radians(sun_elevation_deg)
-        sk.sun_rotation = math.radians(sun_azimuth_deg) + NISHITA_ROT_OFFSET
-        sk.altitude = 120.0
-        sk.air_density = 1.0
-        sk.ozone_density = 1.6      # more ozone = deeper blue twilight
-        sky = sk.outputs["Color"]
-    elif os.path.exists(hdri_path):
-        env = nt.nodes.new("ShaderNodeTexEnvironment")
-        env.image = bpy.data.images.load(hdri_path, check_existing=True)
-        env.interpolation = "Cubic"
-        nt.links.new(mp.outputs["Vector"], env.inputs["Vector"])
-        sky = env.outputs["Color"]
+    have_map = bool(sky_path) and os.path.exists(sky_path)
+    if mode in ("twilight", "milkyway") and not have_map:
+        print(f"[atmosphere] star map missing ({sky_path}); falling back to nishita")
+        mode = "nishita"
+
+    if mode == "milkyway":
+        sky = _env_sky(nt, sky_path, mp.outputs["Vector"])
+        stars = False                                  # the map has real stars
+    elif mode == "nishita":
+        sky = _nishita_sky(nt, sun_elevation_deg, sun_azimuth_deg)
+    elif mode == "hdri":
+        sky = _env_sky(nt, sky_path, mp.outputs["Vector"]) if have_map else _nishita_sky(nt, sun_elevation_deg, sun_azimuth_deg)
+    else:  # twilight: physical sky + real stars, added (radiance adds)
+        twi = _nishita_sky(nt, sun_elevation_deg, sun_azimuth_deg)
+        starmap = _env_sky(nt, sky_path, mp.outputs["Vector"])
+        if star_scale != 1.0:
+            _, starmap = C.mix_color(nt, 1.0, starmap, (star_scale, star_scale, star_scale, 1.0), "MULTIPLY")
+        _, sky = C.mix_color(nt, 1.0, twi, starmap, "ADD")
+        stars = False                                  # ditto
+    sky_socket = sky
 
     # sky * strength
-    _, sky_scaled = C.mix_color(nt, 1.0, sky, (strength, strength, strength, 1.0), "MULTIPLY")
+    _, sky_scaled = C.mix_color(nt, 1.0, sky_socket, (strength, strength, strength, 1.0), "MULTIPLY")
     color = sky_scaled
 
     if stars:

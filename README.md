@@ -26,6 +26,8 @@ blender -b --python tools/make_sky_hdri.py -- --res 8k   # -> assets/hdri/fermil
 
 # final renders on a GPU workstation
 ./render.sh --gpu --final                                # 3840x2160, 1024 spp -> renders/fermilab_muc_cover.png
+./render.sh --gpu --final --camera overview \\
+    --out renders/fermilab_site_overview.png             # whole complex, campus boundary highlighted
 ./render.sh --gpu --final --camera cover --res 2400x3600 \
     --out renders/fermilab_muc_cover_portrait.png        # magazine-cover crop, Milky Way arch over the building
 ```
@@ -44,21 +46,44 @@ Look-dev loop: render a preview, then `python3 tools/render_sheet.py out/preview
 writes a sheet with the frame, three zoomed crops and a luminance histogram
 with clipping percentages.
 
-## The night sky
+## The sky
 
-`tools/make_sky_hdri.py` builds the sky from NASA/GSFC's *Deep Star Maps 2020*
-(1.7 billion Gaia/Hipparcos/Tycho stars, equatorial coordinates, public
-domain). It computes local sidereal time for Fermilab (41.8319 N, 88.2560 W)
-at the requested UTC instant, rotates the map into the local horizon frame,
-adds a faint airglow floor and the light-pollution domes of Chicago,
-Naperville, Aurora and the Fox Valley towns, and writes an equirectangular
-EXR in Blender's world convention. The default instant, 21:30 CDT on
-9 September 2026, puts the galactic centre 13 deg up in the SSW, Cygnus and
-Vega near the zenith, Polaris due north at 41.7 deg, and Capella just rising
-in the NNE. The script prints that table and verifies that each reference
-star lands on a bright pixel of the output. Change the instant with
-`--utc 2026-07-20T04:00` (any ISO time); use `--res 16k` for the 443 MB source
-when rendering above 4K.
+`tools/make_sky_hdri.py` builds the star field from NASA/GSFC's *Deep Star
+Maps 2020* (1.7 billion Gaia/Hipparcos/Tycho stars, equatorial coordinates,
+public domain). It computes local sidereal time and the solar position for
+Fermilab (41.8319 N, 88.2560 W) at the requested UTC instant, rotates the map
+into the local horizon frame, adds a faint airglow floor and the
+light-pollution domes of Chicago, Naperville, Aurora and the Fox Valley
+towns, and writes an equirectangular EXR in Blender's world convention plus a
+JSON sidecar.
+
+The default instant is **19:45 CDT on 9 September 2026** (00:45 UTC the 10th):
+
+| | Altitude | Azimuth |
+|---|---|---|
+| Sun | −6.8° (late civil twilight) | 283° WNW |
+| Galactic centre | 19° | 185° S |
+| Polaris | 41.8° | 0° N |
+
+That is the moment the scene renders by default: the sky still lights the
+landscape, and the Milky Way is up in the south. The script prints the whole
+reference table and verifies that each bright star lands on a bright pixel of
+the output, so the orientation is checked rather than assumed. Move the
+instant with `--utc 2026-07-20T04:00` (any ISO time) and the scene follows —
+`--sky twilight` reads the sun's elevation and azimuth back out of the sidecar,
+so the twilight glow and the stars always describe the same moment. Use
+`--res 16k` for the 443 MB source when rendering above 4K.
+
+Sky modes (`--sky`):
+
+* `twilight` (default) — physical Nishita sky with the sun below the horizon
+  **plus** the real star field added on top. Radiance adds, so the stars
+  survive only where the twilight sky is dark, which is what happens in
+  reality. This is the mode that lets you read the landscape.
+* `milkyway` — the star field alone: full astronomical night, site lit only
+  by its own lights.
+* `nishita` — the twilight sky alone, no stars.
+* `hdri` — a Poly Haven sky HDRI, rotated by `--sky-rot`.
 
 ## What is in the scene
 
@@ -66,9 +91,10 @@ when rendering above 4K.
 |---|---|
 | Wilson Hall | Two lofted towers following `y = 34 - 25 t^2.3` (outer face) so they lean in and meet at the roof; procedural facade with per-floor ribbon windows, randomly lit offices (2700-4200 K), board-formed concrete texture; glazed atrium ends with lit balcony edges; Ramsey Auditorium, plaza, reflecting pond, hyperbolic obelisk, five warm floodlights |
 | Accelerators | Tevatron berm (r = 1000 m) with inner cooling-pond ring and a faint amber tunnel marker; Main Injector berm; the muon collider as a 1590 m-radius emissive tube (cyan, brighter to the camera than to the scene) with a soft sheath, two detector halls at opposite interaction points, and the proton-driver linac meeting the ring at its western crossing |
+| Site boundary | The ~27 km² campus outline as a glowing ground ribbon with vertex markers, kept dimmer than the beamlines so the hierarchy reads collider > Tevatron > boundary; excluded from diffuse/glossy/volume rays so it marks the site without lighting it. Disable with `--no-boundary` |
 | Site | 60 km prairie plane (Grass004 x Ground037, tallgrass tint), ten lakes with Fresnel water and wind-stretched ripples, road network with wet asphalt, ~120 sodium/LED lamps, ancillary buildings with hashed lit windows, ~3,700 instanced trees in woods, hedgerows and tree lines, distant town glow on three horizons |
-| Atmosphere | Astronomically placed Milky Way sky (see below) with Chicago-area sky glow; optional physically based twilight (`--sky nishita`) or Poly Haven HDRI (`--sky hdri`); homogeneous aerial haze in an 80 km box; a 9 km ground-fog box with exponential height falloff and noise pools (anisotropic forward scattering); optional moon (`--moon`) |
-| Camera | Full-frame 30-40 mm at f/1.8, depth of field on Wilson Hall; presets `northeast` (default: over the reflecting pond toward the galactic core), `cover` (portrait crop of the same vantage), `aerial` (SW, looking NE along the ring), `east`, `aerial_wide`, `high`, `low` (with bokeh prairie grass in the foreground), `portrait` |
+| Atmosphere | Physical twilight sky plus the astronomically placed Milky Way and Chicago-area sky glow (see above); homogeneous aerial haze in an 80 km box; a 9 km ground-fog box with exponential height falloff and noise pools (anisotropic forward scattering); optional moon (`--moon`) |
+| Camera | Full-frame 24-40 mm, depth of field on Wilson Hall; presets `northeast` (default: over the reflecting pond toward the galactic core), `overview` (2.4 km up and 8.5 km NNE, framing the whole campus boundary with both rings), `cover` (portrait crop of the northeast vantage), `overlook`, `aerial`, `east`, `aerial_wide`, `high`, `low` (with bokeh prairie grass in the foreground), `portrait` |
 | Look | Cycles with adaptive sampling, path guiding, light tree, OpenImageDenoise; AgX "Punchy"; compositor bloom (two passes), faint chromatic aberration, vignette |
 
 ## Look-dev notes

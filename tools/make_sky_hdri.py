@@ -17,13 +17,18 @@ Run inside Blender's Python (for EXR I/O):
         [--utc 2026-09-10T02:30] [--res 8k] [--out assets/hdri/fermilab_night_sky.exr]
         [--no-skyglow] [--scale S]
 
-The default instant is 21:30 CDT on 9 Sep 2026: astronomical night, the
-galactic centre ~16 deg up in the SSW, Cygnus near the zenith.
+The default instant is 19:45 CDT on 9 Sep 2026 (00:45 UTC the 10th): the sun
+is 6.8 deg below the horizon in the WNW -- late civil twilight, so the sky
+still lights the landscape -- while the galactic centre stands 19 deg up in
+the south. The script prints the solar position and writes it to a JSON
+sidecar beside the EXR so the scene can place its twilight sun at the same
+instant as these stars.
 """
 from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 import math
 import os
 import sys
@@ -98,6 +103,30 @@ def horizon_basis(lat_deg: float, lst_deg: float) -> np.ndarray:
     north = np.array([-math.sin(phi) * math.cos(th), -math.sin(phi) * math.sin(th), math.cos(phi)])
     east = np.array([-math.sin(th), math.cos(th), 0.0])
     return np.stack([east, north, up])
+
+
+def sun_radec(jd: float) -> tuple[float, float]:
+    """Apparent solar RA/Dec (deg), low-precision formulae good to ~0.01 deg."""
+    n = jd - 2451545.0
+    L = (280.460 + 0.9856474 * n) % 360.0
+    g = math.radians((357.528 + 0.9856003 * n) % 360.0)
+    lam = math.radians(L + 1.915 * math.sin(g) + 0.020 * math.sin(2 * g))
+    eps = math.radians(23.439 - 0.0000004 * n)
+    ra = math.degrees(math.atan2(math.cos(eps) * math.sin(lam), math.cos(lam))) % 360.0
+    dec = math.degrees(math.asin(math.sin(eps) * math.sin(lam)))
+    return ra, dec
+
+
+def twilight_phase(sun_alt: float) -> str:
+    if sun_alt > 0:
+        return "daylight"
+    if sun_alt > -6:
+        return "civil twilight"
+    if sun_alt > -12:
+        return "nautical twilight"
+    if sun_alt > -18:
+        return "astronomical twilight"
+    return "night"
 
 
 def altaz(ra_deg, dec_deg, R):
@@ -181,6 +210,8 @@ def build(args) -> None:
     lst = (gmst_deg(jd) + LON_DEG) % 360.0
     R = horizon_basis(LAT_DEG, lst)
     print(f"[sky] {args.utc} UTC  JD={jd:.5f}  GMST={gmst_deg(jd):.3f} deg  LST={lst:.3f} deg ({lst / 15:.3f} h)  lat={LAT_DEG} lon={LON_DEG}")
+    sun_alt, sun_az = altaz(*sun_radec(jd), R)
+    print(f"[sky] sun: alt {sun_alt:+.2f} deg  az {sun_az:.1f} deg  -> {twilight_phase(sun_alt)}")
     print(f"[sky] {'object':22s} {'alt':>7s} {'az':>7s}")
     for name, (ra, dec) in REFS.items():
         alt, az = altaz(ra, dec, R)
@@ -259,6 +290,28 @@ def build(args) -> None:
         bg = lum_o[max(0, cy - 8 * r):cy + 8 * r + 1, max(0, cx - 8 * r):cx + 8 * r + 1]
         print(f"[sky] {name:22s} {alt:6.1f} {az:6.1f} {win.max():9.4g} {np.median(bg):9.4g}")
 
+    # sidecar so the scene can put the twilight sun at the same instant as these stars
+    gc_alt, gc_az = altaz(*REFS["Sgr A* (gal. centre)"], R)
+    meta = {
+        "utc": args.utc,
+        "julian_date": jd,
+        "lst_deg": lst,
+        "latitude": LAT_DEG,
+        "longitude": LON_DEG,
+        "sun_altitude_deg": sun_alt,
+        "sun_azimuth_deg": sun_az,
+        "twilight_phase": twilight_phase(sun_alt),
+        "galactic_centre_altitude_deg": gc_alt,
+        "galactic_centre_azimuth_deg": gc_az,
+        "source": "NASA/GSFC SVS Deep Star Maps 2020 (public domain); Gaia DR2: ESA/Gaia/DPAC",
+        "starmap_resolution": args.res,
+        "skyglow": 0.0 if args.no_skyglow else args.skyglow,
+    }
+    side = os.path.splitext(args.out)[0] + ".json"
+    with open(side, "w") as fh:
+        json.dump(meta, fh, indent=2)
+    print(f"[sky] wrote {side}")
+
     if args.preview:
         save_preview(args.out, args.preview)
         print(f"[sky] wrote preview {args.preview}")
@@ -267,7 +320,7 @@ def build(args) -> None:
 def main() -> None:
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--utc", default="2026-09-10T02:30", help="UTC instant (ISO). Default = 21:30 CDT, 9 Sep 2026")
+    p.add_argument("--utc", default="2026-09-10T00:45", help="UTC instant (ISO). Default = 19:45 CDT, 9 Sep 2026: sun 6.8 deg below the horizon (late civil twilight), galactic centre 19 deg up in the south")
     p.add_argument("--res", default="8k", choices=["4k", "8k", "16k"], help="NASA star-map resolution to use")
     p.add_argument("--out", default=os.path.join(HDRI_DIR, "fermilab_night_sky.exr"))
     p.add_argument("--preview", default=os.path.join(HDRI_DIR, "fermilab_night_sky_preview.png"))

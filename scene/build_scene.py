@@ -9,19 +9,27 @@ Options (after the `--`):
   --samples N            Cycles samples (default 512, adaptive)
   --adaptive-threshold T Cycles noise threshold (default 0.012; 0.005 for finals)
   --time-limit SEC       stop sampling after N seconds per image (0 = off)
-  --camera NAME          northeast (default) | cover (portrait) | aerial | east | aerial_wide | high | low | portrait
+  --camera NAME          northeast (default) | overview (whole complex) | cover (portrait)
+                         | overlook | aerial | east | aerial_wide | high | low | portrait
   --lens MM --fstop F    override the preset lens / aperture
-  --sky milkyway|nishita|hdri  real night sky from tools/make_sky_hdri.py (default), physically based twilight, or a Poly Haven HDRI
+  --sky twilight|milkyway|nishita|hdri
+                         twilight (default) = physical twilight sky + the real star field;
+                         milkyway = star field alone (full night); nishita = sky alone;
+                         hdri = a Poly Haven sky. Sun position comes from the star map's
+                         JSON sidecar unless --sun-elevation/--sun-azimuth override it.
+  --star-scale S         multiplier on the star field in twilight mode (default 1.0)
+  --no-boundary          do not highlight the Fermilab site boundary
+  --boundary-strength S  how brightly the boundary reads to the camera (default 6.0)
   --sky-file PATH        pre-oriented night-sky EXR (default assets/hdri/fermilab_night_sky.exr)
   --device CPU|GPU       Cycles device (default CPU; use GPU on a workstation)
   --moon                 add a moon (off by default: it would wash out the Milky Way)
-  --sun-elevation DEG    Nishita sun elevation (default -4: civil twilight)
-  --sun-azimuth DEG      Nishita sunset compass azimuth (default 290 = WNW)
+  --sun-elevation DEG    override sun elevation (default: from the sky sidecar)
+  --sun-azimuth DEG      override sun compass azimuth (default: from the sky sidecar)
   --hdri NAME            Poly Haven id (default kloppenheim_06_puresky)
   --hdri-res 2k|4k       which downloaded resolution to use (default 4k, falls back)
   --sky-strength S       sky multiplier (default 1.0 nishita / 0.12 hdri)
   --sky-rot DEG          rotate the sky about Z (default 161.6: sunset glow at WNW)
-  --exposure EV          view exposure (default 0.95)
+  --exposure EV          view exposure (default 0.0 twilight / 0.95 milkyway)
   --fog-density D        ground fog peak density per metre (default 3.2e-3)
   --no-fog               disable the ground-fog volume
   --no-haze              disable the aerial haze volume (--haze-density D to tune)
@@ -33,6 +41,7 @@ Options (after the `--`):
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -56,17 +65,20 @@ def parse_args():
     p.add_argument("--camera", default="northeast", choices=sorted(camera_rig.PRESETS))
     p.add_argument("--lens", type=float, default=None)
     p.add_argument("--fstop", type=float, default=None)
-    p.add_argument("--sky", default="milkyway", choices=["milkyway", "nishita", "hdri"])
+    p.add_argument("--sky", default="twilight", choices=["twilight", "milkyway", "nishita", "hdri"])
     p.add_argument("--sky-file", default=os.path.join(C.HDRI_DIR, "fermilab_night_sky.exr"), help="pre-oriented night-sky EXR from tools/make_sky_hdri.py (milkyway mode)")
     p.add_argument("--device", default="CPU", choices=["CPU", "GPU"], help="Cycles compute device (GPU auto-selects OPTIX/CUDA/HIP/METAL/ONEAPI)")
     p.add_argument("--moon", action="store_true", help="add a moon (off by default: it would wash out the Milky Way)")
-    p.add_argument("--sun-elevation", type=float, default=-4.0, help="Nishita sun elevation in degrees (negative = below horizon)")
-    p.add_argument("--sun-azimuth", type=float, default=290.0, help="Nishita sunset compass azimuth (deg from north, clockwise)")
+    p.add_argument("--sun-elevation", type=float, default=None, help="sun elevation in degrees (negative = below horizon); default comes from the sky sidecar")
+    p.add_argument("--sun-azimuth", type=float, default=None, help="sun compass azimuth (deg from north, clockwise); default comes from the sky sidecar")
+    p.add_argument("--star-scale", type=float, default=1.0, help="multiplier on the star field in twilight mode")
+    p.add_argument("--no-boundary", action="store_true", help="do not highlight the Fermilab site boundary")
+    p.add_argument("--boundary-strength", type=float, default=6.0, help="how brightly the site boundary reads to the camera")
     p.add_argument("--hdri", default="kloppenheim_06_puresky")
     p.add_argument("--hdri-res", default="4k")
     p.add_argument("--sky-strength", type=float, default=None, help="sky multiplier (default 1.0 for nishita, 0.12 for hdri)")
     p.add_argument("--sky-rot", type=float, default=161.6)
-    p.add_argument("--exposure", type=float, default=0.95)
+    p.add_argument("--exposure", type=float, default=None, help="view exposure in stops (default 0.0 for twilight, 0.95 for milkyway)")
     p.add_argument("--fog-density", type=float, default=3.2e-3)
     p.add_argument("--no-fog", action="store_true")
     p.add_argument("--no-haze", action="store_true")
@@ -84,6 +96,19 @@ def parse_args():
     return p.parse_args(argv)
 
 
+def sky_metadata(sky_path):
+    """Load the JSON sidecar written next to the star map by tools/make_sky_hdri.py."""
+    side = os.path.splitext(sky_path)[0] + ".json"
+    if not os.path.exists(side):
+        return {}
+    try:
+        with open(side) as fh:
+            return json.load(fh)
+    except (OSError, ValueError) as e:
+        print(f"[build] could not read {side}: {e}")
+        return {}
+
+
 def hdri_path(name, res):
     for r in (res, "4k", "2k", "1k"):
         p = os.path.join(C.HDRI_DIR, f"{name}_{r}.hdr")
@@ -95,7 +120,10 @@ def hdri_path(name, res):
 def main():
     args = parse_args()
     if args.sky_strength is None:
-        args.sky_strength = {"milkyway": 1.0, "nishita": 1.0, "hdri": 0.12}[args.sky]
+        args.sky_strength = {"twilight": 1.0, "milkyway": 1.0, "nishita": 1.0, "hdri": 0.12}[args.sky]
+    if args.exposure is None:
+        # twilight is orders of magnitude brighter than night, so it needs far less lift
+        args.exposure = {"twilight": 0.0, "nishita": 0.0, "milkyway": 0.95, "hdri": 0.6}[args.sky]
     t0 = time.time()
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
@@ -119,15 +147,24 @@ def main():
     site.build_street_lights(cols["lights"])
     site.build_buildings(cols["buildings"], concrete)
     ntrees = site.build_trees(cols["trees"], density=args.tree_density)
+    if not args.no_boundary:
+        site.build_campus_boundary(cols["site"], camera_strength=args.boundary_strength)
     site.build_towns(cols["site"])
     print(f"[build] geometry done: {len(bpy.data.objects)} objects, {ntrees} trees, {time.time() - t0:.1f}s")
 
     # --- atmosphere -------------------------------------------------------------
-    sky_path = args.sky_file if args.sky == "milkyway" else hdri_path(args.hdri, args.hdri_res)
-    if args.sky == "milkyway" and not os.path.exists(sky_path):
-        print(f"[build] WARNING: {sky_path} missing -- run: blender -b --python tools/make_sky_hdri.py; falling back to nishita")
-        args.sky = "nishita"
-    atmosphere.build_world(sky_path, mode=args.sky, strength=args.sky_strength, rotation_deg=0.0 if args.sky == "milkyway" else args.sky_rot, sun_elevation_deg=args.sun_elevation, sun_azimuth_deg=args.sun_azimuth, stars=not args.no_stars)
+    sky_path = args.sky_file if args.sky in ("twilight", "milkyway") else hdri_path(args.hdri, args.hdri_res)
+    meta = sky_metadata(sky_path)
+    sun_el = args.sun_elevation if args.sun_elevation is not None else meta.get("sun_altitude_deg", -6.8)
+    sun_az = args.sun_azimuth if args.sun_azimuth is not None else meta.get("sun_azimuth_deg", 283.0)
+    if meta:
+        print(f"[build] sky {meta.get('utc')} UTC ({meta.get('twilight_phase')}): sun {sun_el:+.2f} deg alt / {sun_az:.1f} deg az, "
+              f"galactic centre {meta.get('galactic_centre_altitude_deg', float('nan')):.1f} deg alt / {meta.get('galactic_centre_azimuth_deg', float('nan')):.1f} deg az")
+    if args.sky in ("twilight", "milkyway") and not os.path.exists(sky_path):
+        print(f"[build] WARNING: {sky_path} missing -- run: blender -b --python tools/make_sky_hdri.py -- --res 8k")
+    atmosphere.build_world(sky_path, mode=args.sky, strength=args.sky_strength, rotation_deg=args.sky_rot,
+                           sun_elevation_deg=sun_el, sun_azimuth_deg=sun_az, star_scale=args.star_scale,
+                           stars=not args.no_stars and args.sky in ("nishita", "hdri"))
     if not args.no_haze:
         atmosphere.build_haze(cols["atmosphere"], density=args.haze_density)
     if not args.no_fog:

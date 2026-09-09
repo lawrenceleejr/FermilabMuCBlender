@@ -25,6 +25,16 @@ LINAC = ((-1000.0, -1600.0), (-225.0, -1600.0))       # proton driver -> ring (w
 SITE_X = (-1000.0, 3450.0)   # Kirk Rd .. Eola Rd
 SITE_Y = (-4000.0, 1800.0)   # south boundary .. Butterfield Rd
 
+# Approximate Fermilab site boundary (~27 km^2 / 6,800 acres): Kirk Road on the
+# west, Wilson Street and Butterfield Road across the north, Eola Road on the
+# east, and the irregular southern edge. Simplified from the public site map --
+# indicative of the real extent rather than a survey.
+CAMPUS_BOUNDARY = [
+    (-1000.0, 1500.0), (1250.0, 1560.0), (2300.0, 1470.0), (3450.0, 1120.0),
+    (3450.0, -1900.0), (2650.0, -3150.0), (900.0, -3620.0), (150.0, -3520.0),
+    (-1000.0, -2650.0),
+]
+
 COLLIDER_COLOR = (0.16, 0.62, 1.0)
 SODIUM = C.kelvin_rgb(2150)
 LED_WHITE = C.kelvin_rgb(4200)
@@ -149,6 +159,36 @@ def build_collider(col, concrete):
     (x0, y0), (x1, y1) = LINAC
     C.tube_mesh("proton_driver_linac", [(x0, y0, 1.8), (x1, y1, 1.8)], 0.8, sides=8, col=col, material=linac)
     C.box_object("target_hall", (40.0, 18.0, 10.0), (x0 + 0.62 * (x1 - x0), y0 + 22.0, 0), col=col, material=concrete)
+
+
+def build_campus_boundary(col, *, width=16.0, strength=1.2, camera_strength=6.0, color=(1.0, 0.93, 0.82), z=0.7, posts=True):
+    """Highlight the site boundary as a glowing ribbon lying on the ground.
+
+    A flat ribbon (rather than a tube) reads as a clean line from an overhead
+    or overview camera and all but disappears edge-on from a low one, which is
+    what you want: the outline explains the site's extent in the wide shots
+    without drawing a pipe across the close ones. Kept dimmer than the collider
+    so the visual hierarchy stays collider > Tevatron > boundary.
+    """
+    mat = C.emissive_material("campus_boundary", color, strength, camera_strength=camera_strength)
+    pts = CAMPUS_BOUNDARY
+    obj = C.ribbon_mesh("campus_boundary", pts, width, z, col=col, material=mat, closed=True)
+    obj.visible_shadow = False
+    obj.visible_diffuse = False        # a boundary marker should not light the prairie
+    obj.visible_glossy = False
+    obj.visible_volume_scatter = False
+    if posts:
+        # low markers at the vertices so the corners register at a distance
+        post_mat = C.emissive_material("campus_post", color, strength * 1.5, camera_strength=camera_strength * 2.0)
+        me = C.sphere_mesh_data("campus_post_m", 9.0, subdiv=1)
+        me.materials.append(post_mat)
+        for i, (x, y) in enumerate(pts):
+            o = C.instance(f"campus_post_{i}", me, col=col, location=(x, y, z + 4.0))
+            o.visible_shadow = False
+            o.visible_diffuse = False
+            o.visible_glossy = False
+            o.visible_volume_scatter = False
+    return obj
 
 
 # --------------------------------------------------------------------------- #
