@@ -1,8 +1,11 @@
-# Large CC0 assets are fetched by tools/fetch_assets.py, not committed.
+# Large CC0 / public-domain assets are fetched by tools/fetch_assets.py and
+# tools/make_sky_hdri.py, not committed.
 assets/textures/
 assets/hdri/
-# Scratch renders / previews
+assets/starmap/
+
+# Scratch renders, previews and inspection sheets
 out/
+renders/*_sheet.png
 *.blend1
 __pycache__/
-assets/starmap/
