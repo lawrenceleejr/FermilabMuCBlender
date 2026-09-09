@@ -116,6 +116,16 @@ Things that were not obvious and are easy to undo by accident:
 * **Haze stays thin at night.** There is little light for it to scatter, so a
   thick layer absorbs starlight and sky glow and simply darkens the frame.
   Depth comes from the ground fog and from light falloff, not from haze.
+* **Sun elevation, not exposure, is what makes the landscape readable.** At
+  nautical twilight (sun below about −6°) the prairie renders essentially
+  black, because that really is only a few lux; pushing exposure lifts the
+  noise floor with it. An exposure ladder on the overview camera settled this:
+  civil twilight (−4.4°) at 1.6 stops beats −6.8° at 3.0 stops. The cost is
+  fainter stars.
+* **Wide shots and close shots want different scene furniture.** The boundary
+  ribbon and the town-glow strips both look right from above and wrong from
+  down low (a streak along the horizon; a dark bar across the ground), so both
+  are gated — `--boundary auto` by camera, `--towns` off by default.
 * **Emitters are dual-strength.** `common.emissive_material(..., camera_strength=)`
   drives the visible core off `Light Path > Is Camera Ray`, so the collider
   tube and the lamps can look bright without dumping that much light into the
