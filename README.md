@@ -71,6 +71,28 @@ when rendering above 4K.
 | Camera | Full-frame 30-40 mm at f/1.8, depth of field on Wilson Hall; presets `northeast` (default: over the reflecting pond toward the galactic core), `cover` (portrait crop of the same vantage), `aerial` (SW, looking NE along the ring), `east`, `aerial_wide`, `high`, `low` (with bokeh prairie grass in the foreground), `portrait` |
 | Look | Cycles with adaptive sampling, path guiding, light tree, OpenImageDenoise; AgX "Punchy"; compositor bloom (two passes), faint chromatic aberration, vignette |
 
+## Look-dev notes
+
+Things that were not obvious and are easy to undo by accident:
+
+* **No World volume.** Cycles treats a World volume as infinite, so it
+  attenuates the HDRI background and every sun lamp to nothing. The aerial
+  haze is a bounded 80 km box (`atmosphere.build_haze`) instead.
+* **Haze stays thin at night.** There is little light for it to scatter, so a
+  thick layer absorbs starlight and sky glow and simply darkens the frame.
+  Depth comes from the ground fog and from light falloff, not from haze.
+* **Emitters are dual-strength.** `common.emissive_material(..., camera_strength=)`
+  drives the visible core off `Light Path > Is Camera Ray`, so the collider
+  tube and the lamps can look bright without dumping that much light into the
+  fog. Raise `camera_strength`, not `strength`, to make something read brighter.
+* **The facade is mostly concrete.** Windows occupy 1.4 m of each 4.5 m storey
+  and only ~42 % of offices are lit; the form is carried by the floodlights.
+  Widening the band or raising `window_emission` turns the building into a
+  lantern very quickly.
+* **The compositor runs on CPU** (`postfx.build_compositor`) because the GPU
+  compositor needs a GL context that headless machines often lack. It is a
+  small fraction of frame time.
+
 ## Layout
 
 ```
