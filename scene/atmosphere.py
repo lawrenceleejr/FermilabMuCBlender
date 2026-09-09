@@ -6,7 +6,7 @@
   degrees below the horizon, **plus** the real star field from
   ``tools/make_sky_hdri.py`` added on top. The twilight sky supplies the
   ambient light that makes the landscape readable; the stars survive only
-  where it is dark, which is what actually happens during nautical twilight.
+  where it is dark, which is what actually happens during twilight.
 * ``milkyway`` -- the star-field HDRI alone: full astronomical night.
 * ``nishita`` -- the twilight sky alone, no stars.
 * ``hdri`` -- a Poly Haven sky HDRI, rotated by ``rotation_deg``.
