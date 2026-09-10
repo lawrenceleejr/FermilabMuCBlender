@@ -108,7 +108,8 @@ if [[ $want_both -eq 1 ]]; then
   "$BLENDER" -b -P "$HERE/scene/build_scene.py" -- "${args[@]}" "${bargs[@]}"
   echo "[render.sh] annotation pass -> ${out%.*}_annotated.{png,pdf,svg}"
   python3 "$HERE/tools/annotate.py" "$out" --anno "$anno" --layout "$camera" \
-    --out "${out%.*}_annotated" --formats png,pdf,svg --strict
+    --out "${out%.*}_annotated" --formats png,pdf,svg --strict \
+    --dump-blocks "${out%.*}_blocks.json"
   echo "[render.sh] both deliverables written:"
   echo "  unlabelled : $out"
   echo "  annotated  : ${out%.*}_annotated.png (+ .pdf, .svg)"
