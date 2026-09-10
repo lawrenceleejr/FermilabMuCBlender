@@ -63,32 +63,36 @@ TYPE = {
 }
 
 # --- per-camera label placement ---------------------------------------------- #
-# dx/dy are offsets from the projected anchor in fractions of image width, and
-# `ha` is which side of the label the leader meets. Leaders run anchor -> knee
-# -> label as a two-segment elbow, the usual architectural callout. Tuned by eye
-# against --debug so leaders neither cross each other nor cover their subjects.
+# lx/ly are the label's own position in axes fractions (y up), not an offset, so
+# a column of labels can be aligned exactly; `ha` is the side the leader meets.
+# Leaders run anchor -> knee -> label as a two-segment elbow, the usual
+# architectural callout. Labels sit in two columns clear of the title block and
+# the footer, which is why the numbers look regular rather than tuned per label.
 LAYOUTS = {
     "overview": {
-        "boundary":      dict(dx= 0.150, dy=-0.120, ha="left"),
-        "collider":      dict(dx=-0.230, dy=-0.105, ha="right"),
-        "detector_a":    dict(dx=-0.120, dy= 0.115, ha="right"),
-        "detector_b":    dict(dx=-0.155, dy=-0.055, ha="right"),
-        "linac":         dict(dx=-0.060, dy=-0.150, ha="right"),
-        "tevatron":      dict(dx= 0.175, dy= 0.070, ha="left"),
-        "main_injector": dict(dx= 0.040, dy= 0.150, ha="left"),
-        "wilson":        dict(dx= 0.135, dy=-0.035, ha="left"),
+        # left column
+        "detector_b":    dict(lx=0.150, ly=0.560, ha="right"),
+        "collider":      dict(lx=0.150, ly=0.450, ha="right"),
+        "boundary":      dict(lx=0.150, ly=0.255, ha="right"),
+        # right column
+        "linac":         dict(lx=0.850, ly=0.605, ha="left"),
+        "wilson":        dict(lx=0.850, ly=0.495, ha="left"),
+        "detector_a":    dict(lx=0.850, ly=0.385, ha="left"),
+        "tevatron":      dict(lx=0.850, ly=0.275, ha="left"),
+        # centre-bottom
+        "main_injector": dict(lx=0.430, ly=0.300, ha="right"),
     },
     "northeast": {
-        "wilson":        dict(dx= 0.140, dy=-0.150, ha="left"),
-        "collider":      dict(dx=-0.150, dy=-0.100, ha="right"),
+        "wilson":        dict(lx=0.820, ly=0.660, ha="left"),
+        "collider":      dict(lx=0.170, ly=0.400, ha="right"),
     },
 }
 
 TITLE = dict(
     eyebrow="FERMI NATIONAL ACCELERATOR LABORATORY",
     title="A Muon Collider on the Existing Site",
-    deck=("The proposed 10 km collider ring sited inside Fermilab's 27 km² campus at Batavia, Illinois,\n"
-          "reusing the Tevatron tunnel and the existing injector chain."),
+    deck=("A 10 km collider ring sited within the existing campus at Batavia, Illinois,\n"
+          "reusing the Tevatron tunnel and the injector chain already in the ground."),
 )
 
 
@@ -145,15 +149,17 @@ def scrim(ax, x0, y0, x1, y1, *, strength=0.62, direction="left", zorder=2):
     outline reads as a screenshot.
     """
     n = 256
-    ramp = np.linspace(0.0, 1.0, n)
-    if direction == "left":
+    ramp = np.linspace(0.0, 1.0, n)          # imshow origin="lower": row 0 is the bottom
+    if direction == "left":                  # darkest at the left edge
         a = (1.0 - ramp)[None, :].repeat(n, 0)
-    elif direction == "right":
+    elif direction == "right":               # darkest at the right edge
         a = ramp[None, :].repeat(n, 0)
-    elif direction == "bottom":
+    elif direction == "up":                  # darkest at the top edge
         a = ramp[:, None].repeat(n, 1)
-    else:
+    elif direction == "down":                # darkest at the bottom edge
         a = (1.0 - ramp)[:, None].repeat(n, 1)
+    else:
+        raise ValueError(f"scrim direction must be left/right/up/down, got {direction!r}")
     rgba = np.zeros((n, n, 4))
     rgba[..., 3] = a * strength
     ax.imshow(rgba, extent=(x0, x1, y0, y1), transform=ax.transAxes,
@@ -161,17 +167,21 @@ def scrim(ax, x0, y0, x1, y1, *, strength=0.62, direction="left", zorder=2):
 
 
 def leader(ax, ax_x, ax_y, lx, ly, colour, s, *, ha="left", zorder=6):
-    """Two-segment elbow leader from an anchor dot to a label baseline."""
-    knee_x = lx - (0.022 * s / s) if ha == "left" else lx + 0.022
-    knee_x = lx - 0.022 if ha == "left" else lx + 0.022
-    pts_x = [ax_x, knee_x, lx]
-    pts_y = [ax_y, ly, ly]
-    ax.plot(pts_x, pts_y, transform=ax.transAxes, color=colour, alpha=0.8,
-            lw=0.9 * s, solid_capstyle="round", zorder=zorder)
-    ax.plot([ax_x], [ax_y], transform=ax.transAxes, marker="o", ms=3.4 * s,
+    """Two-segment elbow leader from an anchor dot to the label baseline.
+
+    The short horizontal run into the text is what makes a callout look drawn
+    rather than dropped: the eye follows the horizontal into the words.
+    """
+    run = 0.026 if ha == "left" else -0.026
+    knee_x = lx + run
+    ax.plot([ax_x, knee_x, lx], [ax_y, ly, ly], transform=ax.transAxes, color=colour,
+            alpha=0.85, lw=0.9 * s, solid_capstyle="round", solid_joinstyle="round", zorder=zorder)
+    # a filled dot with a wide soft ring: reads as a survey mark, and stays
+    # visible whether it lands on dark ground or on a bright beamline
+    ax.plot([ax_x], [ax_y], transform=ax.transAxes, marker="o", ms=3.2 * s,
             mfc=colour, mec="none", zorder=zorder + 1)
-    ax.plot([ax_x], [ax_y], transform=ax.transAxes, marker="o", ms=8.0 * s,
-            mfc="none", mec=colour, mew=0.7 * s, alpha=0.45, zorder=zorder)
+    ax.plot([ax_x], [ax_y], transform=ax.transAxes, marker="o", ms=9.0 * s,
+            mfc="none", mec=colour, mew=0.7 * s, alpha=0.40, zorder=zorder)
 
 
 def text(ax, x, y, body, fp, size, colour, s, *, ha="left", va="center", zorder=8, shadow=True, alpha=1.0):
@@ -185,106 +195,132 @@ def text(ax, x, y, body, fp, size, colour, s, *, ha="left", va="center", zorder=
 # --------------------------------------------------------------------------- #
 # blocks
 # --------------------------------------------------------------------------- #
-def draw_title(ax, F, s, meta):
-    scrim(ax, 0.0, 0.60, 0.62, 1.0, strength=0.66, direction="left")
+def axes_dir(vec_px, width, height):
+    """Image-space pixel delta (y down) -> axes-fraction delta (y up).
+
+    The frame is not square, so an angle in axes coordinates is not the angle on
+    screen; converting through pixels is the only way a bearing stays true.
+    """
+    dx_px, dy_px = vec_px
+    # y is negated: the dump measures downward, matplotlib axes measure upward
+    return dx_px / width, -dy_px / height
+
+
+def draw_title(ax, F, s):
+    scrim(ax, 0.0, 0.58, 0.66, 1.0, strength=0.68, direction="left")
     x = 0.038
-    text(ax, x, 0.945, spaced(TITLE["eyebrow"]), F["sans_med"], TYPE["eyebrow"], ACCENT["collider"], s, va="top")
+    text(ax, x, 0.950, spaced(TITLE["eyebrow"]), F["sans_med"], TYPE["eyebrow"], ACCENT["collider"], s, va="top")
     text(ax, x, 0.905, TITLE["title"], F["sans_light"], TYPE["title"], INK, s, va="top")
-    ax.plot([x, x + 0.085], [0.828, 0.828], transform=ax.transAxes, color=ACCENT["collider"],
-            lw=1.6 * s, solid_capstyle="butt", zorder=8)
-    text(ax, x, 0.805, TITLE["deck"], F["sans"], TYPE["deck"], INK_DIM, s, va="top")
+    ax.plot([x, x + 0.075], [0.822, 0.822], transform=ax.transAxes, color=ACCENT["collider"],
+            lw=1.7 * s, solid_capstyle="butt", zorder=8)
+    text(ax, x, 0.797, TITLE["deck"], F["sans"], TYPE["deck"], INK_DIM, s, va="top")
 
 
-def draw_meta(ax, F, s, anno):
-    """Mono block: the facts that make the image checkable rather than decorative."""
+def draw_footer(ax, F, s, anno):
+    """A footer band rather than corner blocks, so the image area stays clear.
+
+    The mono line carries the facts that make the picture checkable instead of
+    merely decorative: the instant, the solar geometry, the lens.
+    """
     sky = anno.get("sky") or {}
     cam = anno.get("camera", {})
     loc = cam.get("location", [0, 0, 0])
-    rows = [
-        ("SITE", "Fermilab, Batavia IL  41.8319°N 88.2560°W"),
-        ("INSTANT", f"{sky.get('utc', 'n/a')} UTC  —  {sky.get('twilight_phase', '')}"),
-        ("SUN", f"{sky.get('sun_altitude_deg', float('nan')):+.1f}° alt  {sky.get('sun_azimuth_deg', float('nan')):.0f}° az"),
-        ("GAL. CENTRE", f"{sky.get('galactic_centre_altitude_deg', float('nan')):.0f}° alt  {sky.get('galactic_centre_azimuth_deg', float('nan')):.0f}° az"),
-        ("CAMERA", f"{cam.get('lens_mm', 0):.0f} mm  —  {loc[2]:.0f} m AGL"),
-    ]
-    scrim(ax, 0.0, 0.0, 0.46, 0.30, strength=0.60, direction="left")
-    y = 0.175
-    dy = 0.032
-    for k, v in rows:
-        text(ax, 0.038, y, k, F["mono_med"], TYPE["meta"], ACCENT["collider"], s, va="center", alpha=0.85)
-        text(ax, 0.155, y, v, F["mono"], TYPE["meta"], INK_DIM, s, va="center")
-        y -= dy
-    text(ax, 0.038, y - 0.012, "Star field: NASA/GSFC SVS Deep Star Maps 2020 · Gaia DR2 (ESA/Gaia/DPAC)",
-         F["mono"], TYPE["meta"] * 0.92, INK_DIM, s, va="center", alpha=0.75)
+    scrim(ax, 0.0, 0.0, 1.0, 0.125, strength=0.74, direction="down")
+    ax.plot([0.0, 1.0], [0.118, 0.118], transform=ax.transAxes, color=INK,
+            lw=0.7 * s, alpha=0.22, zorder=7)
+
+    text(ax, 0.038, 0.082, "Fermilab — proposed muon collider", F["sans_med"], TYPE["label"], INK, s)
+    text(ax, 0.038, 0.053, "Site overview, looking south-south-west", F["sans"], TYPE["metric"], INK_DIM, s)
+
+    sun_a = sky.get("sun_altitude_deg", float("nan"))
+    sun_z = sky.get("sun_azimuth_deg", float("nan"))
+    gc_a = sky.get("galactic_centre_altitude_deg", float("nan"))
+    gc_z = sky.get("galactic_centre_azimuth_deg", float("nan"))
+    utc = sky.get("utc", "n/a")
+    phase = sky.get("twilight_phase", "")
+    col = 0.335
+    text(ax, col, 0.082, f"{utc} UTC   ·   {phase}", F["mono_med"], TYPE["meta"], INK, s, alpha=0.92)
+    text(ax, col, 0.053,
+         f"sun {sun_a:+.1f}° alt {sun_z:.0f}° az   ·   galactic centre {gc_a:.0f}° alt {gc_z:.0f}° az   ·   "
+         f"{cam.get('lens_mm', 0):.0f} mm at {loc[2]:.0f} m",
+         F["mono"], TYPE["meta"], INK_DIM, s)
+    text(ax, 0.038, 0.023, "Cycles / procedural scene · star field NASA GSFC SVS Deep Star Maps 2020, Gaia DR2 (ESA/Gaia/DPAC)",
+         F["mono"], TYPE["meta"] * 0.88, INK_DIM, s, alpha=0.6)
 
 
 def draw_scale_and_north(ax, F, s, anno, width, height):
-    """Scale bar and north arrow, both taken from the camera's own projection.
+    """Scale bar and north needle, both from the camera's own projection.
 
-    A perspective view has no single scale, so the bar is measured at the site
-    centroid and says so; that is honest where an unqualified bar would not be.
+    A perspective view has no single scale, so the bar is measured on the ground
+    at the site centre and labelled as such -- an unqualified bar would be a
+    quiet lie, since the same 2 km is shorter at the far boundary than the near.
     """
     sc = anno.get("scale", {})
     px_per_km = sc.get("px_per_km_at_reference", 0.0)
-    ang = np.radians(sc.get("screen_angle_deg_east", 0.0))
     if px_per_km <= 0:
         return
-    scrim(ax, 0.58, 0.0, 1.0, 0.22, strength=0.55, direction="right")
-
-    # --- scale bar: 2 km, drawn along the projected east direction ---------------
     km = 2.0
-    length = km * px_per_km / width          # in axes-fraction of width
-    x0, y0 = 0.655, 0.105
-    dx, dy = length * np.cos(ang), length * np.sin(ang) * (width / height)
-    ax.plot([x0, x0 + dx], [y0, y0 + dy], transform=ax.transAxes, color=INK, lw=1.8 * s,
-            solid_capstyle="butt", zorder=8)
+    ex, ey = axes_dir(sc.get("east_px_per_km", [px_per_km, 0.0]), width, height)
+    # The bar measures 2 km along the ground's east-west line; which end is east
+    # does not matter, so always draw it left-to-right, the way a bar is read.
+    if ex < 0:
+        ex, ey = -ex, -ey
+    x0, y0 = 0.575, 0.168
+    dx, dy = ex * km, ey * km
+
+    ax.plot([x0, x0 + dx], [y0, y0 + dy], transform=ax.transAxes, color=INK, lw=1.9 * s,
+            solid_capstyle="butt", zorder=8, path_effects=[patheffects.withStroke(linewidth=3.6 * s, foreground="#05070Baa")])
+    # ticks perpendicular to the bar, at 0, 1 and 2 km
+    nx, ny = -dy, dx
+    n_len = (nx ** 2 + ny ** 2) ** 0.5
+    nx, ny = nx / n_len * 0.011, ny / n_len * 0.011
     for f in (0.0, 0.5, 1.0):
         tx, ty = x0 + dx * f, y0 + dy * f
-        nx, ny = -np.sin(ang) * 0.009, np.cos(ang) * 0.009 * (width / height)
-        ax.plot([tx - nx, tx + nx], [ty - ny, ty + ny], transform=ax.transAxes,
-                color=INK, lw=1.4 * s, zorder=8)
-    text(ax, x0, y0 - 0.045, f"0        1        {km:.0f} km", F["mono"], TYPE["scale"], INK, s, va="center")
-    text(ax, x0, y0 - 0.082, "at site centre · perspective view", F["sans"], TYPE["metric"] * 0.95,
-         INK_DIM, s, va="center", alpha=0.8)
+        ax.plot([tx, tx + nx], [ty, ty + ny], transform=ax.transAxes, color=INK, lw=1.5 * s, zorder=8)
+        text(ax, tx + nx * 2.0, ty + ny * 2.0, f"{km * f:.0f}", F["mono"], TYPE["meta"], INK, s,
+             ha="center", va="center")
+    mid_x, mid_y = x0 + dx * 0.5, y0 + dy * 0.5
+    text(ax, mid_x - nx * 2.4, mid_y - ny * 2.4, "km at site centre", F["sans"], TYPE["metric"],
+         INK_DIM, s, ha="center", va="center", alpha=0.9)
 
-    # --- north arrow ---------------------------------------------------------------
-    na = np.radians(anno.get("north", {}).get("screen_angle_deg", 90.0))
-    cx, cy, r = 0.945, 0.125, 0.030
-    ux, uy = np.cos(na) * r, np.sin(na) * r * (width / height)
-    ax.plot([cx - ux * 0.55, cx + ux], [cy - uy * 0.55, cy + uy], transform=ax.transAxes,
-            color=INK, lw=1.5 * s, solid_capstyle="round", zorder=8)
-    for sgn in (+1, -1):
-        hx = cx + ux - (ux * 0.42) + sgn * (-uy * 0.30)
-        hy = cy + uy - (uy * 0.42) + sgn * (ux * 0.30) * (height / width) * (width / height)
-        ax.plot([cx + ux, hx], [cy + uy, hy], transform=ax.transAxes, color=INK,
-                lw=1.5 * s, solid_capstyle="round", zorder=8)
-    text(ax, cx + ux * 1.5, cy + uy * 1.5, "N", F["sans_semi"], TYPE["scale"], INK, s,
+    # --- north needle -------------------------------------------------------------
+    nnx, nny = axes_dir(anno.get("north", {}).get("north_px_per_km", [0.0, -px_per_km]), width, height)
+    ln = (nnx ** 2 + nny ** 2) ** 0.5 or 1.0
+    ux, uy = nnx / ln * 0.055, nny / ln * 0.055
+    cx, cy = 0.868, 0.215
+    ax.annotate("", xy=(cx + ux * 0.6, cy + uy * 0.6), xytext=(cx - ux * 0.6, cy - uy * 0.6),
+                xycoords=ax.transAxes, textcoords=ax.transAxes, zorder=8,
+                arrowprops=dict(arrowstyle="-|>", color=INK, lw=1.4 * s, mutation_scale=13 * s,
+                                shrinkA=0, shrinkB=0))
+    text(ax, cx + ux * 1.05, cy + uy * 1.05, "N", F["sans_semi"], TYPE["scale"], INK, s,
          ha="center", va="center")
 
 
 def draw_features(ax, F, s, anno, layout_name, width, height):
     layout = LAYOUTS.get(layout_name, {})
     feats = anno.get("features", {})
-    # far to near, so a near label overlaps a far one rather than the reverse
+    # far to near, so a nearer label draws over a farther one rather than under
     order = sorted(feats.items(), key=lambda kv: -kv[1].get("depth_m", 0.0))
+    drawn = 0
     for key, f in order:
-        if key not in layout or not f.get("on_screen", False):
+        L = layout.get(key)
+        if L is None or not f.get("on_screen", False):
             continue
-        L = layout[key]
-        ax_x, ax_y = f["x"], 1.0 - f["y"]          # axes fraction has y up
-        lx = ax_x + L["dx"]
-        ly = ax_y + L["dy"]
-        lx = float(np.clip(lx, 0.035, 0.965))
-        ly = float(np.clip(ly, 0.055, 0.945))
+        ax_x, ax_y = f["x"], 1.0 - f["y"]          # axes fractions have y up
+        lx, ly, ha = L["lx"], L["ly"], L.get("ha", "left")
         colour = ACCENT.get(f.get("accent", "neutral"), ACCENT["neutral"])
-        ha = L.get("ha", "left")
         leader(ax, ax_x, ax_y, lx, ly, colour, s, ha=ha)
-        pad = 0.010
+        pad = 0.011
         tx = lx + (pad if ha == "left" else -pad)
-        text(ax, tx, ly + 0.016, f["label"], F["sans_med"], TYPE["label"], INK, s, ha=ha, va="center")
+        text(ax, tx, ly + 0.017, f["label"], F["sans_med"], TYPE["label"], INK, s, ha=ha, va="center")
         if f.get("metric"):
-            text(ax, tx, ly - 0.016, f["metric"], F["mono"], TYPE["metric"], colour, s,
-                 ha=ha, va="center", alpha=0.92)
+            text(ax, tx, ly - 0.017, f["metric"], F["mono"], TYPE["metric"], colour, s,
+                 ha=ha, va="center", alpha=0.95)
+        drawn += 1
+    skipped = [k for k in layout if k not in feats or not feats[k].get("on_screen")]
+    if skipped:
+        print(f"[annotate] not drawn (off screen or absent from the dump): {', '.join(skipped)}")
+    return drawn
 
 
 # --------------------------------------------------------------------------- #
@@ -323,8 +359,8 @@ def build(args) -> int:
             ax.axvline(gx, color="#FF3B3055", lw=0.6 * s, zorder=4)
             ax.axhline(gx, color="#FF3B3055", lw=0.6 * s, zorder=4)
     else:
-        draw_title(ax, F, s, anno.get("sky"))
-        draw_meta(ax, F, s, anno)
+        draw_title(ax, F, s)
+        draw_footer(ax, F, s, anno)
         draw_scale_and_north(ax, F, s, anno, width, height)
         draw_features(ax, F, s, anno, args.layout, width, height)
 

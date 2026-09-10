@@ -216,26 +216,29 @@ def dump_annotations(path, scene, cam, width, height, sky_meta):
     p1 = world_to_camera_view(scene, cam, centroid + east * 1000.0)
     dx = (p1.x - p0.x) * width
     dy = (p1.y - p0.y) * height
+    # Directions are stored as pixel deltas in image coordinates (x right, y
+    # DOWN) for 1 km on the ground, so the consumer never has to guess a sign.
     out["scale"] = {
         "reference_world": list(centroid),
         "reference_x": p0.x,
         "reference_y": 1.0 - p0.y,
         "px_per_km_at_reference": math.hypot(dx, dy),
-        "screen_angle_deg_east": math.degrees(math.atan2(-dy, dx)),
+        "east_px_per_km": [dx, -dy],
     }
 
     # --- north, projected at the same reference point -----------------------------
     n1 = world_to_camera_view(scene, cam, centroid + mathutils.Vector((0.0, 1000.0, 0.0)))
     ndx = (n1.x - p0.x) * width
     ndy = (n1.y - p0.y) * height
-    out["north"] = {"screen_angle_deg": math.degrees(math.atan2(-ndy, ndx)), "px_per_km": math.hypot(ndx, ndy)}
+    out["north"] = {"north_px_per_km": [ndx, -ndy], "px_per_km": math.hypot(ndx, ndy)}
 
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
     with open(path, "w") as fh:
         json.dump(out, fh, indent=2)
     vis = sum(1 for f in out["features"].values() if f["on_screen"])
     print(f"[build] wrote {path}: {vis}/{len(out['features'])} features on screen, "
-          f"{out['scale']['px_per_km_at_reference']:.1f} px/km at centroid, north {out['north']['screen_angle_deg']:.1f} deg")
+          f"{out['scale']['px_per_km_at_reference']:.1f} px/km at centroid, "
+          f"north {math.degrees(math.atan2(-out['north']['north_px_per_km'][1], out['north']['north_px_per_km'][0])):.1f} deg")
     return out
 
 
