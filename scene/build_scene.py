@@ -28,9 +28,9 @@ Options (after the `--`):
   --sun-azimuth DEG      override sun compass azimuth (default: from the sky sidecar)
   --hdri NAME            Poly Haven id (default kloppenheim_06_puresky)
   --hdri-res 2k|4k       which downloaded resolution to use (default 4k, falls back)
-  --sky-strength S       sky multiplier (default 1.0 nishita / 0.12 hdri)
+  --sky-strength S       sky multiplier (default 1.3 twilight / 1.0 nishita / 0.12 hdri)
   --sky-rot DEG          rotate the sky about Z (default 161.6: sunset glow at WNW)
-  --exposure EV          view exposure (default 1.6 twilight / 0.95 milkyway)
+  --exposure EV          view exposure (default 2.0 twilight / 0.95 milkyway)
   --fog-density D        ground fog peak density per metre (default 3.2e-3)
   --no-fog               disable the ground-fog volume
   --no-haze              disable the aerial haze volume (--haze-density D to tune)
@@ -86,9 +86,9 @@ def parse_args():
     p.add_argument("--boundary-strength", type=float, default=4.0, help="how brightly the site boundary reads to the camera")
     p.add_argument("--hdri", default="kloppenheim_06_puresky")
     p.add_argument("--hdri-res", default="4k")
-    p.add_argument("--sky-strength", type=float, default=None, help="sky multiplier (default 1.0 for nishita, 0.12 for hdri)")
+    p.add_argument("--sky-strength", type=float, default=None, help="sky multiplier (default 1.3 for twilight, 1.0 for nishita, 0.12 for hdri)")
     p.add_argument("--sky-rot", type=float, default=161.6)
-    p.add_argument("--exposure", type=float, default=None, help="view exposure in stops (default 0.0 for twilight, 0.95 for milkyway)")
+    p.add_argument("--exposure", type=float, default=None, help="view exposure in stops (default 2.0 for twilight, 0.95 for milkyway)")
     p.add_argument("--fog-density", type=float, default=3.2e-3)
     p.add_argument("--no-fog", action="store_true")
     p.add_argument("--no-haze", action="store_true")
@@ -245,10 +245,10 @@ def dump_annotations(path, scene, cam, width, height, sky_meta):
 def main():
     args = parse_args()
     if args.sky_strength is None:
-        args.sky_strength = {"twilight": 1.0, "milkyway": 1.0, "nishita": 1.0, "hdri": 0.12}[args.sky]
+        args.sky_strength = {"twilight": 1.3, "milkyway": 1.0, "nishita": 1.0, "hdri": 0.12}[args.sky]
     if args.exposure is None:
         # twilight is orders of magnitude brighter than night, so it needs far less lift
-        args.exposure = {"twilight": 1.6, "nishita": 1.6, "milkyway": 0.95, "hdri": 0.6}[args.sky]
+        args.exposure = {"twilight": 2.0, "nishita": 1.6, "milkyway": 0.95, "hdri": 0.6}[args.sky]
     t0 = time.time()
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene

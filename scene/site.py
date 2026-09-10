@@ -462,7 +462,7 @@ def annotation_anchors() -> dict[str, dict]:
     return {
         "collider": dict(
             ring=dict(center=MC_C, radius=MC_R, z=3.0),
-            prefer=(0.34, 0.55),                       # left extreme of the arc, clear of everything
+            prefer=(0.78, 0.56),                       # east arc: keeps the collider in the right column
             label="Muon Collider Ring",
             metric=f"{circ_km(MC_R)} circumference",
             accent="collider",
@@ -493,35 +493,35 @@ def annotation_anchors() -> dict[str, dict]:
         ),
         "rcs12": dict(
             ring=dict(center=RCS12_C, radius=RCS12_DRAW_R, z=4.4),
-            prefer=(0.42, 0.62),
+            prefer=(0.30, 0.71),
             label="RCS 1 & 2",
             metric=f"in the Tevatron tunnel, {circ_km(RCS12_R)} of {circ_km(TEV_R)}",
             accent="collider",
         ),
         "rcs3": dict(
             ring=dict(center=RCS3_C, radius=RCS3_R, z=4.4),
-            prefer=(0.28, 0.55),
+            prefer=(0.74, 0.66),
             label="RCS 3",
             metric=circ_km(RCS3_R),
             accent="collider",
         ),
         "rcs4": dict(
             ring=dict(center=RCS4_C, radius=RCS4_R, z=4.4),
-            prefer=(0.16, 0.36),
+            prefer=(0.15, 0.50),
             label="RCS 4 site filler",
             metric=f"{circ_km(RCS4_R)}, largest ring the site holds",
             accent="collider",
         ),
         "tevatron": dict(
             ring=dict(center=TEV_C, radius=TEV_R, z=6.6),
-            prefer=(0.62, 0.30),
+            prefer=(0.24, 0.66),
             label="Tevatron Ring",
             metric=f"{circ_km(TEV_R)}, tunnel reused",
             accent="tevatron",
         ),
         "main_injector": dict(
             ring=dict(center=MI_C, radius=MI_RX, ry=MI_RY, z=6.6),
-            prefer=(0.72, 0.52),
+            prefer=(0.13, 0.73),
             label="Main Injector",
             metric=f"{ellipse_circ_km(MI_RX, MI_RY)}, existing",
             accent="tevatron",
@@ -535,7 +535,7 @@ def annotation_anchors() -> dict[str, dict]:
         "boundary": dict(
             path=CAMPUS_BOUNDARY,
             z=2.0,
-            prefer=(0.33, 0.74),                       # the near south-west edge
+            prefer=(0.40, 0.80),                       # the near south edge, below the rings
             label="Fermilab Site",
             metric=f"{CAMPUS_AREA_KM2:.0f}{NNBSP}km\u00b2, {CAMPUS_AREA_KM2 * 247.105:.0f} acres",
             accent="boundary",

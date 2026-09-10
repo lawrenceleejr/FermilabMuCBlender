@@ -64,9 +64,11 @@ DASHED = {"offsite"}
 # The key, in the order a reader meets the argument. White is listed as an
 # explicit category: with the site drawn in the same off-white as the body ink,
 # an unlabelled white reads as a missing colour rather than as a class.
+# Three entries, because there are now three categories. "Beyond the campus"
+# was dropped along with the 35 km ring it described: a key entry with nothing
+# in the frame to point at is worse than no key at all.
 KEY = [
     ("collider", "Proposed"),
-    ("offsite", "Proposed, beyond the campus"),
     ("tevatron", "Existing, reused"),
     ("boundary", "Site and context"),
 ]
@@ -116,7 +118,7 @@ CHAIN = [
     dict(keys=["proton_driver"], stage=1),
     dict(keys=["cooling"], stage=2),
     dict(keys=["rcs12", "rcs3"], stage=3, label="RCS 1\u20133",
-         metric="rapid-cycling, 5.99\u201310.7\u202fkm"),
+         metric="rapid-cycling, 5.99 and 10.7\u202fkm"),
     dict(keys=["rcs4"], stage=4),
     dict(keys=["collider"], stage=5),
     dict(keys=["detector_a", "detector_b"], stage=6, label="Detector halls",
@@ -130,7 +132,7 @@ CONTEXT = [
 # The chain, in beam order, for the ribbon. Short forms: the ribbon is a
 # sequence, not a set of definitions.
 RIBBON = [(1, "Proton driver"), (2, "Cooling"), (3, "RCS 1\u20133"),
-          (4, "RCS 4"), (5, "Collider"), (6, "Detectors")]
+          (4, "RCS 4 filler"), (5, "Collider"), (6, "Detectors")]
 
 LAYOUTS = {
     "overview": CHAIN + CONTEXT,
@@ -179,20 +181,20 @@ def ladder(anchors, n):
 
 TITLE = dict(
     title="A Future Muon Collider at Fermilab",
-    # The old standfirst claimed the whole chain "sited on the existing campus"
-    # while a callout said the fourth synchrotron is beyond the boundary -- the
-    # headline and the drawing contradicted each other. This states the result
-    # the geometry actually supports.
-    deck="Five stages of the accelerator chain fit inside the existing 27 km\u00b2 campus. "
-         "The final synchrotron does not.",
+    # The standfirst has to state what the geometry supports, and the geometry
+    # changed: sizing the final synchrotron to the site rather than to the
+    # IMCC's 35 km reference puts the whole chain inside the boundary.
+    deck="The whole accelerator chain, sized to the existing 27 km\u00b2 campus \u2014 "
+         "its final synchrotron a 14.5 km ring that fits.",
 )
 
 # The footer carries only what the image cannot say for itself: where the
 # numbers came from, what the drawing is not, and the credits the data licences
 # ask for. The instant, solar geometry and lens that used to sit here were
 # detail a site plan's reader does not need.
-PROVENANCE = ("Machine parameters: IMCC Tentative Parameter List, 30 Oct 2023 (10 TeV option). "
-              "Siting indicative \u2014 not an engineering or geotechnical study.")
+PROVENANCE = ("Machine parameters: IMCC Tentative Parameter List, 30 Oct 2023 (10 TeV option); "
+              "the final synchrotron is sized to the site at 14.5 km rather than the 35 km reference, "
+              "which needs more acceleration turns. Siting indicative, not an engineering study.")
 CREDIT = ("Procedural Cycles render \u00b7 terrain and site data \u00a9 OpenStreetMap contributors (ODbL) "
           "and AWS Terrain Tiles \u00b7 star field NASA/GSFC SVS Deep Star Maps 2020, Gaia DR2 (ESA/Gaia/DPAC)")
 

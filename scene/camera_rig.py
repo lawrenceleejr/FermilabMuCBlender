@@ -37,8 +37,22 @@ PRESETS = {
     # half the sky for the same camera. Render at e.g. 1600x1067 or 3840x2560.
     # NOTE: north up means looking away from the galactic centre, which is in the southern
     # sky, so the Milky Way core is behind the camera. Use "overview_south" to keep it.
-    "overview": dict(location=(1225.0, -5700.0, 2600.0), target=(1225.0, -1100.0, 0.0),
-                     lens=16.0, fstop=8.0, shift_y=0.060),
+    # Chosen by projecting the real boundary and the three largest rings through
+    # a pinhole model of this camera and scoring the result, rather than by eye.
+    # The subject used to occupy 11 % of the frame with 14 % of the height empty
+    # dark ground below it, so the brightest, largest thing in the picture was
+    # bare sky -- annotation cannot manufacture a hierarchy the tonal
+    # composition denies. This framing puts the site across 76 % of the width
+    # and 35 % of the frame area, leaves 5 % of dead foreground, and still keeps
+    # a 14 % band of sky, which is the whole reason for a wide lens here.
+    #
+    # 24 mm is a deliberate midpoint: 20 mm gives a larger subject but projects
+    # the far edge at 0.34 of the near edge's scale, and 50 mm is nearly uniform
+    # at 0.61 but shrinks the site to 24 % of frame. At 24 mm the ratio is 0.41.
+    # The target is the site-filler centre, so the chain sits in the middle of
+    # the campus; the old target predated the measured plan by about 1.5 km.
+    "overview": dict(location=(1522.0, -5500.0, 2800.0), target=(1522.0, 387.0, 0.0),
+                     lens=24.0, fstop=8.0, shift_y=-0.080),
     # the earlier framing: looking south-south-west, galactic centre in frame, north down-right
     "overview_south": dict(location=(3277.0, 4538.0, 4359.0), target=(1225.0, -1100.0, 0.0),
                            lens=24.0, fstop=8.0, shift_x=0.030, shift_y=-0.027),
