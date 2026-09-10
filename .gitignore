@@ -11,3 +11,8 @@ out/
 renders/*_sheet.png
 *.blend1
 __pycache__/
+
+# Movie frame sequences are build intermediates: a 15 s 1920x1280 pass is 450
+# PNGs and hundreds of MB, and render.sh encodes them to an .mp4 beside the
+# directory. The .mp4 is the deliverable and stays tracked.
+renders/movie_*/
