@@ -75,18 +75,30 @@ PD_BUNCH_R = 600.0 / TAU                     # 95.5 m, mid-range
 MC_C = RCS4_C
 MC_IP_ANGLES = (120.0, 300.0)                # detector halls, diametrically opposite
 
-# The proton driver and cooling channel run in from the south-west, the part of
-# the campus with no existing machine in it.
-PD_ACCUM_C = (-560.0, -2180.0)
-PD_BUNCH_C = (-560.0, -2430.0)
-TARGET_XY = (-330.0, -1960.0)                # pion production target hall
-LINAC = ((-1750.0, -2180.0), (-720.0, -2180.0))
+# The proton driver complex, placed by search rather than by hand. The previous
+# position put the buncher ring and the whole 1030 m linac *outside* the
+# property line -- the site is 5.7 x 6.2 km with an irregular south-west edge,
+# and an eyeballed position at (-560, -2180) with the linac running west to
+# x = -1750 simply left the site, which no siting study could propose.
+#
+# The corridor below is the best that satisfies all of: every element inside the
+# real boundary with a 180 m setback, at least 130 m clear of every existing and
+# proposed tunnel, and at least 130 m clear of the 294 mapped on-site buildings
+# so the linac does not run through the developed campus. It achieves 220 m of
+# setback, 408 m of tunnel clearance and 511 m of building clearance, in the
+# north-east of the site on a 320 deg bearing -- the front end at the periphery
+# feeding inward to the ring chain, which is also how such a complex is laid out.
+LINAC = ((2420.0, 3360.0), (3209.0, 2698.0))
+PD_ACCUM_C = (3388.0, 2548.0)
+PD_BUNCH_C = (3670.0, 2311.0)
+TARGET_XY = (3881.0, 2134.0)
 
 # Ionisation cooling: the document specifies 10 "B-type" rectilinear stages
 # S1-S10 plus A-stages, bunch merge and final cooling, but no overall length,
-# so the channel is drawn at an indicative 600 m and labelled by stage count.
-COOLING_PATH = [(-250.0, -1870.0), (-60.0, -1760.0), (140.0, -1650.0),
-                (330.0, -1540.0), (500.0, -1430.0)]
+# so the channel is drawn at an indicative 500 m and labelled by stage count.
+# It runs inward from the target and stops 130 m short of the outermost tunnel.
+COOLING_PATH = [(3881.0, 2134.0), (3800.0, 2034.4), (3708.0, 1949.8),
+                (3600.2, 1886.4), (3481.4, 1838.0)]
 COOLING_MODULES = 20
 
 # RCS 1 and 2 share the Tevatron tunnel, so they are drawn on the Tevatron's
@@ -404,15 +416,27 @@ def _build_proton_driver(col, concrete):
     unit = C.box_mesh_data("pd_box")
     hall = _lit_box_material("pd_hall", (0.26, 0.26, 0.25), lit_color=C.kelvin_rgb(4000),
                              lit_strength=0.7, band=(0.45, 0.72), lit_fraction=0.35, seed=17.0)
-    for i, (x, y, sx, sy, sz) in enumerate((
-        (-640.0, -1690.0, 90.0, 26.0, 9.0),
-        (-380.0, -1610.0, 54.0, 24.0, 11.0),
-        (-250.0, -1900.0, 40.0, 20.0, 8.0),
+    # Service halls placed along the linac's own axis rather than at fixed
+    # coordinates: the complex moved, and hardcoded halls would have been left
+    # behind in the old location -- which was outside the property line.
+    (ax, ay), (bx, by) = LINAC
+    L = math.hypot(bx - ax, by - ay)
+    ux, uy = (bx - ax) / L, (by - ay) / L
+    rot = math.atan2(uy, ux)
+    for i, (t, off, sx, sy, sz) in enumerate((
+        (0.18, 55.0, 96.0, 26.0, 9.0),
+        (0.62, -50.0, 58.0, 24.0, 11.0),
+        (1.02, 60.0, 42.0, 20.0, 8.0),
     )):
+        x = ax + ux * L * t - uy * off
+        y = ay + uy * L * t + ux * off
         me = unit.copy()
         me.materials.append(hall)
-        C.instance(f"pd_hall_{i}", me, col=col, location=(x, y, 0.0), scale=(sx, sy, sz))
-    C.point_light("pd_light", (-430.0, -1750.0, 30.0), power=14000, kelvin=4200, radius=8.0, col=col)
+        C.instance(f"pd_hall_{i}", me, col=col, location=(x, y, geo.elev(x, y)),
+                   rotation=(0, 0, rot), scale=(sx, sy, sz))
+    mx, my = ax + ux * L * 0.5, ay + uy * L * 0.5
+    C.point_light("pd_light", (mx, my, geo.elev(mx, my) + 30.0), power=14000,
+                  kelvin=4200, radius=8.0, col=col)
 
 
 def _build_cooling_channel(col, concrete):

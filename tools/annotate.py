@@ -175,9 +175,9 @@ def band(anchors, n, *, min_gap=0.058, floor=None, ceil=None):   # noqa: retaine
     return bot, top
 
 
-def place_rungs(anchors, *, min_gap=0.058, floor=None, ceil=None):
-    """A rung per anchor, at the anchor's own height, pushed apart only as much
-    as the minimum gap demands.
+def place_rungs(anchors, *, min_gap=0.058, lift=None, floor=None, ceil=None):
+    """A rung per anchor, lifted above it, pushed apart only as much as the
+    minimum gap demands.
 
     An evenly spaced ladder is tidy and wrong. It puts rungs far from their
     anchors, which makes leaders long, makes them traverse the text column, and
@@ -186,13 +186,20 @@ def place_rungs(anchors, *, min_gap=0.058, floor=None, ceil=None):
     two would collide keeps every leader as short as it can be, which is also
     the better answer typographically: a label belongs next to its subject.
 
+    But level with its anchor is one step too far: the diagonal leg disappears
+    and the leader is a plain horizontal rule. `lift` raises the whole ladder by
+    a constant so the dog-leg has an angle again, without putting the rungs
+    back out of order.
+
     Returns the rungs in the same order as `anchors`.
     """
     ceil = TITLE_FLOOR - 0.030 if ceil is None else ceil
     floor = LABEL_FLOOR if floor is None else floor
+    lift = LABEL_LIFT if lift is None else lift
     n = len(anchors)
     if n == 0:
         return []
+    anchors = [a + lift for a in anchors]
     span = (n - 1) * min_gap
     if span > ceil - floor:                     # more rungs than room: spread evenly
         step = (ceil - floor) / max(n - 1, 1)
@@ -274,6 +281,11 @@ TITLE_FLOOR = 0.800          # nothing else goes above this on the left
 # margin test caught the label overrunning it by 2 px.)
 COL_X = (MARGIN + 0.120, 1.0 - MARGIN - 0.120)
 LABEL_FLOOR = LEGEND_BAND[1] + 0.045   # the ladder may not reach into the legend
+# How far above its anchor each label sits. A rung level with its anchor gives a
+# flat leader and so no dog-leg at all; this is what puts the angle back. It is
+# a uniform shift, so it cannot reintroduce the crossings that an unrelated
+# ladder height once caused -- those came from the *order* going non-monotonic.
+LABEL_LIFT = 0.105
 
 
 # --------------------------------------------------------------------------- #
