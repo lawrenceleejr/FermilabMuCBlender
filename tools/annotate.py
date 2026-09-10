@@ -95,8 +95,9 @@ LAYOUTS = {
 TITLE = dict(
     eyebrow="FERMI NATIONAL ACCELERATOR LABORATORY",
     title="A Muon Collider on the Existing Site",
-    deck=("A 10 km collider ring sited within the existing campus at Batavia, Illinois,\n"
-          "reusing the Tevatron tunnel and the injector chain already in the ground."),
+    deck=("A 10 km collider ring sited within the existing campus at Batavia, Illinois.\n"
+          "Proton driver, cooling channel and RCS chain shown in the order the beam sees them,\n"
+          "reusing the Tevatron tunnel and the injector complex already in the ground."),
 )
 
 
