@@ -150,21 +150,64 @@ def build_world(
     return world
 
 
-def build_haze(col, *, density=3.5e-5, size=200000.0, height=1800.0, anisotropy=0.35):
-    """Homogeneous haze in a huge shallow box: distant ground fades into the sky,
-    while rays leaving through the top still see the sky and stars.
+def build_haze(col, *, density=8.0e-5, size=200000.0, height=1800.0, anisotropy=0.35,
+               scale_height=520.0, patch_scale=7000.0, patch=0.35, seed=7.0):
+    """Aerial haze: exponential in height, patchy in plan, in a huge shallow box.
 
     The box has to cover the ground it is meant to fade. At 80 km it stopped
     well short of the far apron, which reaches the 167 km horizon, leaving the
     most distant ground unhazed and therefore too crisp exactly where the eye
-    expects the horizon to dissolve."""
+    expects the horizon to dissolve.
+
+    `density` is now the density at the ground and it falls off as
+    exp(-z / scale_height), where before it was uniform through the whole
+    1800 m slab. Uniform is the wrong shape for what haze does to a view like
+    this one. Work the sightlines: the camera sits at 2600 m, so a ray to a
+    ground light 80 km out descends steadily, and integrating along it gives an
+    optical depth of 0.74 under the old uniform slab against 1.27 here -- the
+    distance roughly doubles its haze. A ray to a target 5 km away spends
+    almost all its length above 2 km and picks up 0.08, so the near ground
+    stays crisp. A ray leaving upward from the camera sees 0.7 % of the ground
+    density and the star field is untouched. That separation -- far hazy, near
+    crisp, sky clear -- is aerial perspective, and a uniform slab cannot
+    produce it: it fades everything in proportion to distance alone.
+
+    The plan-view noise is the other half. A homogeneous volume gives the
+    distance an even wash, and real air over a city at night is banded and
+    uneven; a large-scale (7 km) modulation of +/- 35 % is what reads as
+    atmosphere rather than as a fog filter.
+    """
     mat = bpy.data.materials.new("aerial_haze")
     mat.use_nodes = True
     nt = mat.node_tree
     nt.nodes.remove(nt.nodes["Principled BSDF"])
     out = nt.nodes["Material Output"]
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(tc.outputs["Object"], sep.inputs["Vector"])   # object at z=-1: 1 m of offset
+
+    # exp(-z / H), clamped at the ground so the box's buried floor does not
+    # integrate a runaway density under the terrain
+    zc = C.nmath(nt, "MAXIMUM", sep.outputs["Z"], value_b=0.0)
+    zn = C.nmath(nt, "DIVIDE", zc.outputs[0], value_b=-scale_height)
+    ex = C.nmath(nt, "EXPONENT", zn.outputs[0])
+
+    n1 = nt.nodes.new("ShaderNodeTexNoise")
+    n1.inputs["Scale"].default_value = 1.0 / patch_scale
+    n1.inputs["Detail"].default_value = 2.0
+    n1.inputs["Roughness"].default_value = 0.5
+    n1.noise_dimensions = "4D"
+    n1.inputs["W"].default_value = seed
+    nt.links.new(tc.outputs["Object"], n1.inputs["Vector"])
+    # Fac in [0,1] -> [1-patch, 1+patch]
+    band = C.nmath(nt, "MULTIPLY_ADD", n1.outputs["Fac"], value_b=2.0 * patch)
+    band.inputs[2].default_value = 1.0 - patch
+
+    d = C.nmath(nt, "MULTIPLY", ex.outputs[0], band.outputs[0])
+    d = C.nmath(nt, "MULTIPLY", d.outputs[0], value_b=density)
+
     vol = nt.nodes.new("ShaderNodeVolumePrincipled")
-    vol.inputs["Density"].default_value = density
+    nt.links.new(d.outputs[0], vol.inputs["Density"])
     vol.inputs["Anisotropy"].default_value = anisotropy
     vol.inputs["Color"].default_value = (0.72, 0.82, 1.0, 1.0)
     nt.links.new(vol.outputs["Volume"], out.inputs["Volume"])

@@ -833,13 +833,37 @@ def build_street_lights(col, *, near=1800.0, mid=16000.0, far=80500.0,
     included.
     """
     lamp = _lamp_factory(col)
-    sodium = C.emissive_material("lamp_far_sodium", SODIUM, 26.0, camera_strength=34.0)
-    head_far = C.sphere_mesh_data("lamp_far_head", 1.7)
-    head_far.materials.append(sodium)
+    # Three brightnesses per distant register, not one.
+    #
+    # Every one of the 20,200 distant lamps used to carry the same material, so
+    # the far field rendered as an even carpet of identical dots -- and a city
+    # seen from 40 km is the opposite of even. Some luminaires are shielded,
+    # some are behind trees, some are a whole lit forecourt reading as one
+    # point, and the air in between is doing its own work. Spreading the camera
+    # strength over 0.5x, 1.0x and 1.9x, with the warm end of the spread pushed
+    # warmer, gives the distance the uneven, granular quality that reads as
+    # shimmer. The variants are assigned from the same seeded generator that
+    # thins the points, so the pattern is stable between renders and between
+    # the frames of the animation -- a *random* assignment per frame would be
+    # literal twinkling and would also destroy the temporal denoiser.
+    def _register(name, mesh_r, strength, cam, tints):
+        heads = []
+        for i, (mul, tint) in enumerate(tints):
+            m = C.emissive_material(f"{name}_{i}", tint, strength * mul,
+                                    camera_strength=cam * mul)
+            me = C.sphere_mesh_data(f"{name}_head_{i}", mesh_r)
+            me.materials.append(m)
+            heads.append(me)
+        return heads
+
+    # Temperatures, not hand-typed RGB: SODIUM is kelvin_rgb(2150) and these
+    # belong on the same scale. 1900 K to 2500 K is about the spread a real
+    # trunk-road network shows, low-pressure sodium through to the warm end of
+    # the LED retrofits that are replacing it.
+    spread = ((0.5, C.kelvin_rgb(1900)), (1.0, SODIUM), (1.9, C.kelvin_rgb(2500)))
+    heads_far = _register("lamp_far_sodium", 1.7, 26.0, 34.0, spread)
     # the horizon register: bright to camera, nearly no contribution to lighting
-    horizon = C.emissive_material("lamp_horizon", SODIUM, 1.5, camera_strength=42.0)
-    head_h = C.sphere_mesh_data("lamp_horizon_head", 4.5)
-    head_h.materials.append(horizon)
+    heads_h = _register("lamp_horizon", 4.5, 1.5, 42.0, spread)
     rng = random.Random(41)
     n_near = n_mid = n_far = 0
     # Candidates are collected first and thinned by an even stride if they
@@ -902,12 +926,21 @@ def build_street_lights(col, *, near=1800.0, mid=16000.0, far=80500.0,
         step = len(items) / cap
         return [items[int(i * step)] for i in range(cap)]
 
+    # weighted so most lamps sit at the middle brightness and the bright
+    # variant is the exception, which is what makes it read as a highlight
+    pick = random.Random(97)
+    weights = (0.34, 0.46, 0.20)
+
+    def variant(heads):
+        r = pick.random()
+        return heads[0] if r < weights[0] else (heads[1] if r < weights[0] + weights[1] else heads[2])
+
     for j, (x, y) in enumerate(stride(mid_pts, mid_cap)):
-        C.instance(f"lamp_mid_{j}", head_far, col=col,
+        C.instance(f"lamp_mid_{j}", variant(heads_far), col=col,
                    location=(x, y, geo.elev(x, y) + 9.2))
         n_mid += 1
     for j, (x, y) in enumerate(stride(far_pts, far_cap)):
-        C.instance(f"lamp_h_{j}", head_h, col=col,
+        C.instance(f"lamp_h_{j}", variant(heads_h), col=col,
                    location=(x, y, geo.elev(x, y) + 9.2))
         n_far += 1
 

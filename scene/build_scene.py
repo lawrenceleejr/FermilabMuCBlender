@@ -96,7 +96,9 @@ def parse_args():
     p.add_argument("--fog-density", type=float, default=3.2e-3)
     p.add_argument("--no-fog", action="store_true")
     p.add_argument("--no-haze", action="store_true")
-    p.add_argument("--haze-density", type=float, default=3.0e-5)
+    # the ground-level density now, not a uniform one: build_haze falls off as
+    # exp(-z / 520 m), so the same number means much more haze than it did
+    p.add_argument("--haze-density", type=float, default=8.0e-5)
     p.add_argument("--no-stars", action="store_true")
     p.add_argument("--tree-density", type=float, default=1.0)
     p.add_argument("--no-grass", action="store_true")
