@@ -37,17 +37,18 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 FONT_DIR = os.path.join(ROOT, "assets", "fonts")
 
 # --- palette ---------------------------------------------------------------- #
-# Accent hues echo the emitters in the render so a label reads as belonging to
-# its subject. Hierarchy comes from size, weight and space; colour only confirms
-# it, so the layout still works for a colour-blind reader or in greyscale.
+# Three accents carrying one distinction -- proposed / existing / the site
+# itself -- and echoing the emitters in the render so a label reads as
+# belonging to its subject. Hierarchy comes from size, weight and space, so the
+# figure still reads in greyscale or to a colour-blind viewer; colour only
+# confirms which of the three a label names.
 INK = "#F2F0EB"
 INK_DIM = "#9AA3AF"
 ACCENT = {
-    "collider": "#7FD2FF",
-    "tevatron": "#F2B173",
-    "beam": "#CFE4FF",
-    "boundary": "#F5F2EC",
-    "neutral": "#E9E7E2",
+    "collider": "#7FD2FF",     # proposed: collider, RCS, cooling, proton driver
+    "tevatron": "#F2B173",     # existing: Tevatron, Main Injector
+    "boundary": "#F5F2EC",     # the site itself
+    "neutral": "#E9E7E2",      # anything else, e.g. Wilson Hall
 }
 
 # --- type scale (1.25 ratio from an 11 pt base, at 1600 px wide) ------------- #
