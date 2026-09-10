@@ -94,6 +94,35 @@ Sky modes (`--sky`):
 * `nishita` — the twilight sky alone, no stars.
 * `hdri` — a Poly Haven sky HDRI, rotated by `--sky-rot`.
 
+## Ring sizes
+
+Radii come from the IMCC *Tentative Parameter list for the International Muon
+Collider Collaboration*, 30 October 2023 ([indico.cern.ch event
+1313021](https://indico.cern.ch/event/1313021/contributions/5623393/)) —
+Table 3.10 for the acceleration chain, 3.19 for the collider, 3.2 for the
+proton-driver compressor — as circumference / 2π:
+
+| Stage | Circumference | Radius |
+|---|---|---|
+| Collider (10 TeV) | 10 000 m | 1591.5 m |
+| RCS 1 and RCS 2 | 5 990 m (one shared tunnel) | 953.3 m |
+| RCS 3 | 10 700 m | 1702.7 m |
+| RCS 4 | 35 000 m | 5570.4 m |
+| Compressor ring | 300–900 m | 47.7–143.2 m |
+
+Two things fall out of putting the document's numbers on the real site:
+
+* **RCS 1 and 2 nearly fit the Tevatron tunnel.** 5 990 m against the
+  Tevatron's 6 283 m is a 5 % difference, so reusing that tunnel is
+  quantitatively supported rather than just rhetorically convenient.
+* **RCS 4 does not fit the campus.** At 35 km circumference it is 11 km
+  across, against a site about 4.5 × 5 km. It is drawn dimmer, sweeping
+  outside the boundary, and labelled as beyond the campus — rather than
+  quietly shrunk to fit, which is the tempting thing to do and would make the
+  figure a lie.
+
+The 3 TeV option (collider 4.5 km) needs a correspondingly smaller chain.
+
 ## Labelled figures
 
 `tools/annotate.py` composes a presentation figure over a finished render:
@@ -144,7 +173,7 @@ What keeps it honest rather than decorative:
 |---|---|
 | Wilson Hall | Two lofted towers following `y = 34 - 25 t^2.3` (outer face) so they lean in and meet at the roof; procedural facade with per-floor ribbon windows, randomly lit offices (2700-4200 K), board-formed concrete texture; glazed atrium ends with lit balcony edges; Ramsey Auditorium, plaza, reflecting pond, hyperbolic obelisk, five warm floodlights |
 | Existing accelerators | Tevatron berm (r = 1000 m) with inner cooling-pond ring and a faint amber crest marker; Main Injector berm with its own marker |
-| Muon collider chain | The stages the machine actually needs, scaled to the real hardware so the figure shows the footprint it would occupy: proton driver complex (linac, accumulator and buncher rings, service halls), pion target hall, a 600 m ionisation cooling channel drawn as discrete modules on a bright beamline, two new rapid-cycling synchrotron tunnels with RF straights (violet-blue, dimmer than the collider so the nested rings stay tellable apart), and the 1590 m-radius collider ring with two detector halls at opposite interaction points. Siting is indicative, not an engineering layout |
+| Muon collider chain | The stages the machine needs, at the IMCC's own circumferences (see below): proton driver complex (linac, accumulator and compressor rings, service halls), pion target hall, an ionisation cooling channel drawn as discrete modules on a bright beamline, the RCS acceleration chain, and the collider ring with two detector halls at opposite interaction points. Ring sizes are the document's; siting on the campus is ours and indicative |
 | Site boundary | The ~27 km² campus outline as a glowing ground ribbon with vertex markers, kept dimmer than the beamlines so the hierarchy reads collider > Tevatron > boundary; excluded from diffuse/glossy/volume rays so it marks the site without lighting it. Disable with `--no-boundary` |
 | Site | 60 km prairie plane (Grass004 x Ground037, Voronoi field parcels varying in brightness and hue, tallgrass tint), ten lakes with Fresnel water and wind-stretched ripples, road network with wet asphalt, ~120 sodium/LED lamps, ancillary buildings with hashed lit windows, ~3,700 instanced trees in woods, hedgerows and tree lines (optional distant town-glow strips via `--towns`) |
 | Atmosphere | Physical twilight sky plus the astronomically placed Milky Way and Chicago-area sky glow (see above); homogeneous aerial haze in an 80 km box; a 9 km ground-fog box with exponential height falloff and noise pools (anisotropic forward scattering); optional moon (`--moon`) |
