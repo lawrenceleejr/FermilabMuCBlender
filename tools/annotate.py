@@ -916,8 +916,14 @@ def draw_features(ax, F, s, anno, layout_name, width, height, *, ceil=None):
         # Crossings are deliberately not in the key. They were, and optimising
         # them cost either the beam order or the shared angle; a crossed pair of
         # leaders is legible and an inconsistent set of kinks is not.
-        if ((over_cost(over), round(angle, 1), backwards, total)
-                < (over_cost(best[1]), round(best[2], 1), best[3], best[4])):
+        # Reading order outranks the angle's value. What was asked for is that
+        # the kinks be *consistent*, and they are consistent at whatever angle
+        # comes out, so the magnitude is only a preference for a shallow one --
+        # while a ladder that runs 4, 5, 1, 2, 3 is simply wrong. Ranking the
+        # angle first left it there, because the angle bottoms out at its 30
+        # degree floor for many splits and the tie was never broken.
+        if ((over_cost(over), backwards, round(angle, 1), total)
+                < (over_cost(best[1]), best[3], round(best[2], 1), best[4])):
             best = (out, over, angle, backwards, total, assign)
     if best[0] is None:                              # no balanced split at all
         best = (*_layout(default), default)
