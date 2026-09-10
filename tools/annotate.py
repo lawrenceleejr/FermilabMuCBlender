@@ -202,10 +202,20 @@ CREDIT = ("Procedural Cycles render \u00b7 terrain and site data \u00a9 OpenStre
 # edges and the label spacing is computed rather than typed.
 MARGIN = 0.042
 GUTTER = 0.030               # the common knee gutter: one vertical spine per column
-FOOTER_RULE = 0.052          # hairline above the credit lines
-LEGEND_BAND = (0.075, 0.200)  # sequence ribbon and key left, graphic scale right
+
+# The bottom of the frame is stacked explicitly from the bottom edge upward,
+# because everything in it has variable height: the footer wraps to as many
+# lines as the copy needs, and the graphic scale's legs are however long the
+# projection makes them. Deriving each band from the one below it is what stops
+# the footer growing into the legend, which is what happened when the rule was
+# a fixed 0.052 and the provenance line grew.
+FOOTER_BOTTOM = 0.016        # baseline of the lowest footer line
+FOOTER_LEAD = 0.020          # leading within the footer block
+FOOTER_LINES = 4             # reserved; the block wraps into at most this many
+FOOTER_RULE = FOOTER_BOTTOM + FOOTER_LINES * FOOTER_LEAD + 0.014
+LEGEND_BAND = (FOOTER_RULE + 0.014, FOOTER_RULE + 0.130)
 TITLE_FLOOR = 0.800          # nothing else goes above this on the left
-# The columns need to be wide enough for the longest metric string; the old
+# The columns need to be wide enough for the longest metric string; an earlier
 # 0.098 gave 157 px for a 187 px string, so six blocks hung past the margin.
 COL_X = (MARGIN + 0.174, 1.0 - MARGIN - 0.174)
 LABEL_FLOOR = LEGEND_BAND[1] + 0.045   # the ladder may not reach into the legend
@@ -361,6 +371,32 @@ DRAWN: list[tuple[str, str, object]] = []   # (role, group, artist) for the chec
 RENDERER = [None]     # set in build(); lets a run of type be measured as it is laid out
 
 
+def fit_lines(ax, body, fp, size, s, max_w, width):
+    """Break `body` into lines no wider than `max_w` axes fractions.
+
+    Greedy, on real measured extents rather than a character count: the
+    provenance line grew when it took on the site-filler explanation and ran
+    221 px past the right margin, which a character budget would not have
+    caught because it depends on the face and the size.
+    """
+    words = body.split()
+    lines, cur = [], ""
+    for wd in words:
+        trial = f"{cur} {wd}".strip()
+        probe = ax.text(0, -1, trial, transform=ax.transAxes, fontproperties=fp,
+                        fontsize=size * s)
+        w_ax = measure(probe, width)
+        probe.remove()
+        if cur and w_ax > max_w:
+            lines.append(cur)
+            cur = wd
+        else:
+            cur = trial
+    if cur:
+        lines.append(cur)
+    return lines
+
+
 def measure(t, width) -> float:
     """Axes-fraction width of an already-created text artist.
 
@@ -443,7 +479,7 @@ def draw_ribbon(ax, F, s, width):
     a figure whose subject is a chain has to say, somewhere, which end the beam
     enters. One line of type does what twelve leaders could not.
     """
-    y = LEGEND_BAND[1] - 0.014
+    y = LEGEND_BAND[1] - 0.010
     x = MARGIN
     gap, tight = 0.020, 0.006
     t = text(ax, x, y, "Beam sequence", F["sans_semi"], TYPE["credit"], INK_DIM, s,
@@ -470,7 +506,7 @@ def draw_key(ax, F, s, width):
     pattern as well as a hue, so the one real caveat in the figure survives a
     projector, a greyscale reprint and a colour-blind reader.
     """
-    y = LEGEND_BAND[0] + 0.024
+    y = LEGEND_BAND[0] + 0.014
     x = MARGIN
     swatch, gap = 0.020, 0.030
     for accent, caption in KEY:
@@ -484,20 +520,36 @@ def draw_key(ax, F, s, width):
     return x
 
 
-def draw_footer(ax, F, s, anno):
-    """One hairline, then provenance and credits.
+def draw_footer(ax, F, s, anno, width):
+    """One hairline, then provenance and credits, wrapped to the margins.
 
     Where the numbers came from is part of the data: without it the figure is
     an assertion. The credit line used to be dimmed twice over -- a grey ink
     *and* 55 % alpha -- compositing to a contrast ratio of 3.0 at a 7.8 px cap
     height, which fails the only function an attribution has.
+
+    Both blocks are wrapped on measured widths. The footer is the one place
+    where copy grows as the work is explained, so a fixed single line here is a
+    margin overrun waiting to happen -- and it happened.
     """
     ax.plot([MARGIN, 1.0 - MARGIN], [FOOTER_RULE, FOOTER_RULE], transform=ax.transAxes,
             color=INK, lw=1.0 * s, alpha=0.28, zorder=7)
-    text(ax, MARGIN, FOOTER_RULE - 0.019, PROVENANCE, F["sans"], TYPE["credit"], "#A7AEB9", s,
-         va="center", shadow=False, role="credit:provenance", group="footer")
-    text(ax, MARGIN, FOOTER_RULE - 0.038, CREDIT, F["sans"], TYPE["credit"], "#8C939E", s,
-         va="center", shadow=False, role="credit:sources", group="footer")
+    avail = 1.0 - 2 * MARGIN
+    lines = []
+    for body, colour, role in ((PROVENANCE, "#A7AEB9", "credit:provenance"),
+                               (CREDIT, "#8C939E", "credit:sources")):
+        for line in fit_lines(ax, body, F["sans"], TYPE["credit"], s, avail, width):
+            lines.append((line, colour, role))
+    if len(lines) > FOOTER_LINES:
+        print(f"[annotate] footer wrapped to {len(lines)} lines but only "
+              f"{FOOTER_LINES} are reserved; raise FOOTER_LINES or shorten the copy")
+    # laid out upward from the bottom margin, so the block cannot run off the
+    # frame however long the copy gets
+    y = FOOTER_BOTTOM + (len(lines) - 1) * FOOTER_LEAD
+    for line, colour, role in lines:
+        text(ax, MARGIN, y, line, F["sans"], TYPE["credit"], colour, s,
+             va="center", shadow=False, role=role, group="footer")
+        y -= FOOTER_LEAD
 
 
 def draw_scale_and_north(ax, F, s, anno, width, height):
@@ -520,18 +572,25 @@ def draw_scale_and_north(ax, F, s, anno, width, height):
     px_per_km = sc.get("px_per_km_at_reference", 0.0)
     if px_per_km <= 0:
         return
-    km = 2.0
-    # both legs straight from the projection: east is a scalar px/km, north is
-    # already an axes-fraction delta per km once axes_dir has flipped its sign
-    east = km * px_per_km / width
     nx, ny = axes_dir(anno.get("north", {}).get("north_px_per_km", [0.0, -px_per_km]), width, height)
+    # Pick the round distance that fits the band rather than assuming one. This
+    # camera projects 1 km to 206 px east and 95 px north, so the 2 km the
+    # legend used to assume would be a 412 px bar with a 191 px riser -- taller
+    # than the legend band and straight through the callout ladder.
+    km = 1.0
+    for cand in (5.0, 2.0, 1.0, 0.5):
+        if (cand * px_per_km / width <= 0.20
+                and abs(cand * ny) <= (LEGEND_BAND[1] - LEGEND_BAND[0]) * 0.80):
+            km = cand
+            break
+    east = km * px_per_km / width
     ndx, ndy = km * nx, km * ny
 
     # one shared right edge with the margin and the footer rule: three
     # near-identical right edges 20-140 px apart read as sloppiness
     x1 = 1.0 - MARGIN
     x0 = x1 - east
-    y0 = LEGEND_BAND[0] + 0.014
+    y0 = LEGEND_BAND[0] + 0.010
 
     ax.plot([x0, x1], [y0, y0], transform=ax.transAxes, color=INK, lw=1.9 * s,
             solid_capstyle="butt", zorder=8)
@@ -540,9 +599,9 @@ def draw_scale_and_north(ax, F, s, anno, width, height):
     for f in (0.5, 1.0):                                # ticks on the east leg
         tx = x0 + east * f
         ax.plot([tx, tx], [y0, y0 - 0.012], transform=ax.transAxes, color=INK, lw=1.4 * s, zorder=8)
-    text(ax, x1, y0 - 0.034, f"{km:.0f}\u202fkm east", F["sans_med"], TYPE["meta"], INK, s,
+    text(ax, x1, y0 - 0.034, f"{km:g}\u202fkm east", F["sans_med"], TYPE["meta"], INK, s,
          ha="right", va="center", shadow=False, role="legend:scale", group="scale")
-    text(ax, x0 + ndx + 0.007, y0 + ndy, f"{km:.0f}\u202fkm north", F["sans_med"], TYPE["meta"],
+    text(ax, x0 + ndx + 0.007, y0 + ndy, f"{km:g}\u202fkm north", F["sans_med"], TYPE["meta"],
          INK, s, ha="left", va="center", shadow=False, role="legend:scale", group="scale")
     text(ax, x1, y0 - 0.054, "projected at site centre",
          F["sans"], TYPE["credit"], INK_DIM, s, ha="right", va="center", shadow=False, role="legend:scale", group="scale")
@@ -557,10 +616,15 @@ def draw_features(ax, F, s, anno, layout_name, width, height):
         if keys:
             groups.append((g, keys))
 
-    columns = {"left": [], "right": []}
-    for g, keys in groups:
-        side = "left" if feats[keys[0]]["x"] < COLUMN_SPLIT else "right"
-        columns[side].append((g, keys))
+    # Split by rank, not by a fixed x. Nine of the twelve anchors in this view
+    # sit left of centre, so a fixed COLUMN_SPLIT put eight callouts in the left
+    # column and one in the right: the left ladder then had to stretch far from
+    # its own anchors, which is what reintroduced a crossing. Ranking by anchor
+    # x and halving keeps the columns within one of each other while still
+    # giving every callout the side its anchor leans toward.
+    ordered = sorted(groups, key=lambda t: feats[t[1][0]]["x"])
+    half = (len(ordered) + 1) // 2
+    columns = {"left": ordered[:half], "right": ordered[half:]}
 
     placed = []
     for side, items in columns.items():
@@ -772,7 +836,7 @@ def build(args) -> int:
             title=args.title or TITLE["title"],
             deck=(args.deck.replace("\\n", "\n") if args.deck else TITLE["deck"]),
         ))
-        draw_footer(ax, F, s, anno)
+        draw_footer(ax, F, s, anno, width)
         draw_ribbon(ax, F, s, width)
         draw_key(ax, F, s, width)
         draw_scale_and_north(ax, F, s, anno, width, height)
