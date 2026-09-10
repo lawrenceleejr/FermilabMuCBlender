@@ -19,6 +19,7 @@ import io
 import pathlib
 import sys
 import time
+import urllib.error
 import urllib.request
 import zipfile
 
@@ -46,12 +47,33 @@ HDRIS = [
 ]
 
 
+# ambientCG rejects urllib's default "Python-urllib/3.x" with a flat 403, on
+# every retry, so the fetcher looked like a network problem when it was a
+# header problem. Verified: no User-Agent gives 403, this one gives 200 and
+# 39.9 MB. NASA/GSFC and Poly Haven serve either way. The same lesson is
+# already applied in get_fonts.py and fetch_geodata.py; this file predated both
+# and never got it.
+UA = "Mozilla/5.0 (X11; Linux x86_64) FermilabMuCBlender/1.0 (+CC0 asset fetch)"
+
+
 def _get(url: str, retries: int = 4) -> bytes:
     last = None
     for i in range(retries):
         try:
-            with urllib.request.urlopen(url, timeout=600) as r:
+            req = urllib.request.Request(url, headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=600) as r:  # noqa: S310
                 return r.read()
+        except urllib.error.HTTPError as e:               # noqa: PERF203
+            last = e
+            if e.code in (401, 403, 404, 410):
+                # a refusal, not congestion: retrying cannot change the answer,
+                # and four escalating sleeps only bury the real cause
+                print(f"  {e.code} {e.reason} -- not retrying (check the "
+                      "User-Agent or the URL)")
+                break
+            wait = 2 ** (i + 1)
+            print(f"  retry {i + 1}/{retries} after {e} (sleep {wait}s)")
+            time.sleep(wait)
         except Exception as e:  # noqa: BLE001
             last = e
             wait = 2 ** (i + 1)

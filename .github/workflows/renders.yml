@@ -127,10 +127,19 @@ jobs:
             assets/fonts
           key: assets-${{ env.STARMAP_RES }}-${{ hashFiles('tools/fetch_assets.py', 'tools/get_fonts.py') }}
 
+      # Not fatal on purpose. These are third-party CC0 hosts, and the scene
+      # degrades rather than breaks without them: common.pbr_material falls
+      # back to flat colours when a texture set is absent. A render that shows
+      # the geometry with plain materials is still worth having, and is still
+      # the check this workflow exists to provide -- so a host being down or
+      # rate-limiting does not cost the whole run. What is present gets
+      # reported in the summary so a flat-looking artifact is never a mystery.
       - name: Fetch assets
+        id: assets
         if: steps.cache-assets.outputs.cache-hit != 'true'
+        continue-on-error: true
         run: |
-          python tools/fetch_assets.py --starmap-res "$STARMAP_RES" || python tools/fetch_assets.py
+          python tools/fetch_assets.py --starmap-res "$STARMAP_RES"
           python tools/get_fonts.py
 
       # The sky is generated, not downloaded, and it is large. Keyed on the
@@ -144,8 +153,23 @@ jobs:
 
       - name: Build the sky
         if: steps.cache-sky.outputs.cache-hit != 'true'
+        continue-on-error: true
         run: |
           "$HOME/blender/blender" -b --python tools/make_sky_hdri.py -- --res "$STARMAP_RES"
+
+      - name: What assets are present
+        run: |
+          {
+            echo "| asset | state |"
+            echo "|---|---|"
+            for d in assets/textures assets/fonts assets/starmap assets/hdri assets/plan; do
+              n=$(find "$d" -type f 2>/dev/null | wc -l)
+              if [ "$n" -gt 0 ]; then echo "| \`$d\` | $n files |"; else echo "| \`$d\` | **missing** |"; fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ ! -d assets/textures ] || [ -z "$(find assets/textures -type f 2>/dev/null)" ]; then
+            echo "::warning::no PBR textures; the render will use flat fallback colours"
+          fi
 
       - name: Render
         id: render
@@ -207,7 +231,7 @@ jobs:
             renders/ci_*.png
             renders/ci_*.pdf
             renders/ci_*.svg
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
 
       # Separate artifact: the .blend is tens of MB and most of the time you
