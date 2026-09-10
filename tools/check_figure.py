@@ -102,6 +102,15 @@ def main() -> int:
     # beamlines and the terrain, and leaves exactly what the annotation layer
     # put there. Without --base the seam check is skipped rather than guessed.
     def worst_step(profile, lo, win=8, gap=3):
+        """Largest level change across a window, in luminance units.
+
+        `win` and `gap` arrive already scaled to the figure -- see the caller.
+        Given absolute pixel counts they measure a different fraction of the
+        image at every resolution, which is how a perfectly smooth 30 px fade
+        came to be reported as a 10 L step at 800 px and nothing at 1600 px.
+        """
+        win = max(2, win)
+        gap = max(1, gap)
         best = (0.0, lo)
         for i in range(win + gap, len(profile) - win - gap):
             d = abs(np.median(profile[i + gap:i + gap + win])
@@ -124,7 +133,14 @@ def main() -> int:
         # below the title block. And on 8-bit medians the profile jitters by a
         # unit or two, which a raw window comparison reports as a 6 L step in a
         # perfectly smooth ramp -- so the profile is smoothed first.
-        def smooth(v, k=9):
+        # Every window below is a fraction of the frame, not a pixel count.
+        # The numbers were tuned on a 1600 px wide figure and the layout they
+        # measure scales with width, so they scale with it too.
+        fs = w / 1600.0
+        win, gap = int(round(8 * fs)), int(round(3 * fs))
+        k = max(3, int(round(9 * fs)) | 1)
+
+        def smooth(v, k=k):
             if len(v) < k:
                 return v
             return np.convolve(v, np.ones(k) / k, mode="valid")
@@ -136,10 +152,10 @@ def main() -> int:
         rows = smooth(np.median(d[r0:r1, :], axis=1))
         c0, c1 = int(w * 0.03), int(w * 0.97)
         cols = smooth(np.median(d[r0:r1, c0:c1], axis=0))
-        r0 += 4                                     # the valid-mode convolution offset
-        c0 += 4
-        r_step, r_at = worst_step(rows, r0)
-        c_step, c_at = worst_step(cols, c0)
+        r0 += k // 2                                # the valid-mode convolution offset
+        c0 += k // 2
+        r_step, r_at = worst_step(rows, r0, win=win, gap=gap)
+        c_step, c_at = worst_step(cols, c0, win=win, gap=gap)
         print("\nscrim edges (sustained step in annotated minus base, clear of type)")
         print(f"  row shift  {r_step:5.2f} L at row {r_at} ({r_at / h:.2f} of height)")
         print(f"  col shift  {c_step:5.2f} L at col {c_at} ({c_at / w:.2f} of width)")
