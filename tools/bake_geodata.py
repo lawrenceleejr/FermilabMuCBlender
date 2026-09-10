@@ -54,6 +54,11 @@ KEEP = {
     "major_roads": dict(tol=20.0, radius=16000.0),
     "minor_roads": dict(tol=20.0, radius=7000.0),
     "site_roads":  dict(tol=10.0, radius=5000.0),
+    # Buildings were omitted here at first, which is why the Village came out
+    # with nothing in it: the builder read the baked plan, and the baked plan
+    # had no footprints. A small tolerance, because these are 10-40 m boxes and
+    # simplifying them at road tolerance would collapse them to slivers.
+    "buildings":   dict(tol=2.0,  radius=6500.0),
     "urban":       dict(tol=30.0, radius=14000.0),
 }
 SETBACK = 250.0                          # tunnel setback from the property line
