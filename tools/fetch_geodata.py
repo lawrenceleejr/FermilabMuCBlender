@@ -228,9 +228,24 @@ def fetch_layer(key: str, *, refetch=False) -> list:
             try:
                 part = ways(overpass(body, timeout=180, tries=2, nonempty=True))
             except Exception as e:                       # noqa: BLE001
-                print(f"    tile {n}/{len(tiles)} failed: {e}")
-                missing.append(n)
-                continue
+                # A tile can be legitimately empty, and the nonempty guard
+                # cannot tell that from a mirror shedding load -- both look like
+                # zero elements. Tile 25 of this grid is entirely Lake Michigan:
+                # of 22 096 road vertices fetched in its latitude band from the
+                # neighbouring tiles, none lie east of its west edge, the
+                # nearest stopping 12 km short of it. So an empty result is
+                # accepted after the retries are spent, and recorded as empty
+                # rather than left outstanding forever. The distinction that
+                # matters is kept: a tile that only ever timed out is still
+                # reported missing.
+                if "no elements" in str(e):
+                    print(f"    tile {n}/{len(tiles)}: empty after retries, "
+                          "accepting as genuinely empty (open water or unmapped)")
+                    part = []
+                else:
+                    print(f"    tile {n}/{len(tiles)} failed: {e}")
+                    missing.append(n)
+                    continue
             os.makedirs(OUT_DIR, exist_ok=True)
             with open(tp, "w") as fh:
                 json.dump(part, fh, separators=(",", ":"))
