@@ -77,19 +77,19 @@ LAYOUTS = {
         # Two columns of six, each ordered to match its anchors' heights so the
         # dog-legs run parallel and never cross. Six slots on one ladder.
         # left column
-        "rcs4":          dict(lx=0.135, ly=0.710, ha="right"),
-        "rcs3":          dict(lx=0.135, ly=0.596, ha="right"),
+        "rcs4":          dict(lx=0.135, ly=0.690, ha="right"),
+        "rcs3":          dict(lx=0.135, ly=0.586, ha="right"),
         "collider":      dict(lx=0.135, ly=0.482, ha="right"),
-        "cooling":       dict(lx=0.135, ly=0.368, ha="right"),
-        "proton_driver": dict(lx=0.135, ly=0.254, ha="right"),
-        "boundary":      dict(lx=0.135, ly=0.140, ha="right"),
+        "cooling":       dict(lx=0.135, ly=0.378, ha="right"),
+        "proton_driver": dict(lx=0.135, ly=0.274, ha="right"),
+        "boundary":      dict(lx=0.135, ly=0.170, ha="right"),
         # right column
-        "tevatron":      dict(lx=0.865, ly=0.710, ha="left"),
-        "detector_a":    dict(lx=0.865, ly=0.596, ha="left"),
+        "tevatron":      dict(lx=0.865, ly=0.690, ha="left"),
+        "detector_a":    dict(lx=0.865, ly=0.586, ha="left"),
         "wilson":        dict(lx=0.865, ly=0.482, ha="left"),
-        "rcs12":         dict(lx=0.865, ly=0.368, ha="left"),
-        "main_injector": dict(lx=0.865, ly=0.254, ha="left"),
-        "detector_b":    dict(lx=0.865, ly=0.140, ha="left"),
+        "rcs12":         dict(lx=0.865, ly=0.378, ha="left"),
+        "main_injector": dict(lx=0.865, ly=0.274, ha="left"),
+        "detector_b":    dict(lx=0.865, ly=0.170, ha="left"),
     },
     "northeast": {
         "wilson":        dict(lx=0.820, ly=0.660, ha="left"),
@@ -252,7 +252,7 @@ def draw_footer(ax, F, s, anno):
     foot = anno.get("_footer") or {}
     text(ax, 0.038, 0.082, foot.get("left", "Fermilab — proposed muon collider"),
          F["sans_med"], TYPE["label"], INK, s)
-    text(ax, 0.038, 0.053, foot.get("sub", "Site overview, looking south-south-west"),
+    text(ax, 0.038, 0.053, foot.get("sub", "Site overview, looking north"),
          F["sans"], TYPE["metric"], INK_DIM, s)
 
     sun_a = sky.get("sun_altitude_deg", float("nan"))
