@@ -345,6 +345,14 @@ def main():
         # ffmpeg turns the sequence into an mp4 in seconds afterwards.
         start, end, frames = camera_rig.animate_approach(
             cam, scene, args.camera, seconds=args.animate, fps=args.fps)
+        # Motion blur off for the move. It is enabled as house style because a
+        # still has nothing moving in it, so it costs nothing there. Here it
+        # costs BVH work on 50 000 objects across every frame and buys nothing:
+        # the approach covers 1000 m of rise and 7 deg of tilt over 450 frames,
+        # so a 0.5 shutter smears about 0.07 px. (It is very visible if the same
+        # move is compressed into a two-frame test, which is a property of the
+        # test rather than of the movie.)
+        scene.render.use_motion_blur = False
         stem = os.path.splitext(os.path.abspath(args.out))[0]
         os.makedirs(stem, exist_ok=True)
         scene.render.filepath = os.path.join(stem, "frame_")
