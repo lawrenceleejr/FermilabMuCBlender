@@ -1,0 +1,227 @@
+name: renders
+
+# What this is for: every change to the scene produces a render you can look at,
+# and the .blend that produced it. The scene is assembled from measured data --
+# an OSM boundary, a DEM, fitted ring geometry -- so a change to a builder can
+# move real geometry without any test failing. The artifact is the check.
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths:
+      - "scene/**"
+      - "tools/**"
+      - "assets/plan/**"
+      - "render.sh"
+      - "docker/Dockerfile"
+      - ".github/workflows/renders.yml"
+  pull_request:
+    paths:
+      - "scene/**"
+      - "tools/**"
+      - "assets/plan/**"
+      - "render.sh"
+  workflow_dispatch:
+    inputs:
+      camera:
+        description: "camera preset (blank = the default matrix)"
+        required: false
+        default: ""
+      res:
+        description: "resolution, e.g. 1600x1067"
+        required: false
+        default: ""
+      samples:
+        description: "Cycles samples"
+        required: false
+        default: ""
+
+# A second push supersedes the first: these jobs are long and nobody wants the
+# render of a commit that has already been replaced.
+concurrency:
+  group: renders-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BLENDER_SERIES: "5.2"
+  BLENDER_VERSION: "5.2.1"
+  # 4k rather than the 8k used for finals: the star map is 36 MB at 4k against
+  # 130 MB, and at CI resolutions the difference is invisible. The finals are a
+  # GPU job on a workstation, not this.
+  STARMAP_RES: "4k"
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: overview
+            camera: overview
+            res: 960x640
+            samples: "48"
+            annotate: true
+          - name: cover-south
+            camera: overview_south
+            res: 960x640
+            samples: "48"
+            annotate: false
+          - name: wilson-hall
+            camera: northeast
+            res: 960x540
+            samples: "48"
+            annotate: false
+    name: ${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Blender runtime libraries
+        run: |
+          sudo apt-get update
+          # libegl1 is required even with --background: Blender exits on
+          # "libEGL.so.1: cannot open shared object file" before running the
+          # script without it.
+          sudo apt-get install -y --no-install-recommends \
+            xz-utils libx11-6 libxi6 libxxf86vm1 libxfixes3 libxrender1 \
+            libxkbcommon0 libgl1 libglu1-mesa libegl1 libsm6 libxext6 \
+            libxrandr2 libfreetype6
+
+      - name: Cache Blender
+        id: cache-blender
+        uses: actions/cache@v4
+        with:
+          path: ~/blender
+          key: blender-${{ env.BLENDER_VERSION }}-linux-x64
+
+      - name: Install Blender
+        if: steps.cache-blender.outputs.cache-hit != 'true'
+        run: |
+          url="https://download.blender.org/release/Blender${BLENDER_SERIES}/blender-${BLENDER_VERSION}-linux-x64.tar.xz"
+          curl -fSL "$url" -o /tmp/blender.tar.xz
+          mkdir -p ~/blender
+          tar -xf /tmp/blender.tar.xz -C ~/blender --strip-components=1
+
+      - name: Check Blender
+        run: |
+          echo "$HOME/blender" >> "$GITHUB_PATH"
+          "$HOME/blender/blender" --version
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Host Python dependencies
+        run: python -m pip install --quiet numpy pillow matplotlib
+
+      # Textures, the star map and the fonts are third-party downloads of a few
+      # hundred MB. Cached on the fetchers' own hashes so a change to what is
+      # fetched invalidates it, and nothing else does.
+      - name: Cache downloaded assets
+        id: cache-assets
+        uses: actions/cache@v4
+        with:
+          path: |
+            assets/textures
+            assets/starmap
+            assets/fonts
+          key: assets-${{ env.STARMAP_RES }}-${{ hashFiles('tools/fetch_assets.py', 'tools/get_fonts.py') }}
+
+      - name: Fetch assets
+        if: steps.cache-assets.outputs.cache-hit != 'true'
+        run: |
+          python tools/fetch_assets.py --starmap-res "$STARMAP_RES" || python tools/fetch_assets.py
+          python tools/get_fonts.py
+
+      # The sky is generated, not downloaded, and it is large. Keyed on the
+      # generator and the resolution so it is rebuilt only when either changes.
+      - name: Cache generated sky
+        id: cache-sky
+        uses: actions/cache@v4
+        with:
+          path: assets/hdri
+          key: sky-${{ env.STARMAP_RES }}-${{ hashFiles('tools/make_sky_hdri.py') }}
+
+      - name: Build the sky
+        if: steps.cache-sky.outputs.cache-hit != 'true'
+        run: |
+          "$HOME/blender/blender" -b --python tools/make_sky_hdri.py -- --res "$STARMAP_RES"
+
+      - name: Render
+        id: render
+        run: |
+          set -o pipefail
+          camera="${{ github.event.inputs.camera || matrix.camera }}"
+          res="${{ github.event.inputs.res || matrix.res }}"
+          samples="${{ github.event.inputs.samples || matrix.samples }}"
+          mkdir -p renders out
+          stem="renders/ci_${camera}"
+          # --time-limit is a floor under the job, not a quality setting: it
+          # stops one pathological frame from eating the whole 150 minutes.
+          "$HOME/blender/blender" -b -P scene/build_scene.py -- \
+            --camera "$camera" --res "$res" --samples "$samples" \
+            --sky twilight --time-limit 2400 \
+            --annotations "out/ci_${camera}_anno.json" \
+            --save-blend "out/ci_${camera}.blend" \
+            --out "${stem}.png" 2>&1 | tee "out/ci_${camera}.log" | grep -viE "^Fra:" || true
+          test -s "${stem}.png" || { echo "::error::no image was written"; exit 1; }
+          echo "stem=$stem" >> "$GITHUB_OUTPUT"
+          echo "camera=$camera" >> "$GITHUB_OUTPUT"
+
+      - name: Annotate
+        if: matrix.annotate
+        run: |
+          camera="${{ steps.render.outputs.camera }}"
+          # --strict: a layout fault fails the job. The whole point of the
+          # checker is that "it rendered" is not the same as "the labels are
+          # where they should be".
+          python tools/annotate.py "${{ steps.render.outputs.stem }}.png" \
+            --anno "out/ci_${camera}_anno.json" --layout "$camera" \
+            --out "${{ steps.render.outputs.stem }}_annotated" \
+            --formats png,pdf,svg --strict
+
+      - name: Measure the figure
+        if: matrix.annotate
+        run: |
+          python tools/check_figure.py "${{ steps.render.outputs.stem }}_annotated.png" \
+            --base "${{ steps.render.outputs.stem }}.png" \
+            --anno "out/ci_${{ steps.render.outputs.camera }}_anno.json" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Scene summary
+        if: always()
+        run: |
+          {
+            echo "### ${{ matrix.name }}"
+            echo '```'
+            grep -E "^\[(site|build|render)\]" "out/ci_${{ steps.render.outputs.camera }}.log" || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload images
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-${{ matrix.name }}-${{ github.sha }}
+          path: |
+            renders/ci_*.png
+            renders/ci_*.pdf
+            renders/ci_*.svg
+          if-no-files-found: error
+          retention-days: 30
+
+      # Separate artifact: the .blend is tens of MB and most of the time you
+      # only want the picture. Note it references the fetched assets by relative
+      # path, so opening it needs tools/fetch_assets.py to have been run -- it
+      # is the scene, not a self-contained bundle.
+      - name: Upload blend and data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blend-${{ matrix.name }}-${{ github.sha }}
+          path: |
+            out/ci_*.blend
+            out/ci_*_anno.json
+            out/ci_*.log
+          if-no-files-found: warn
+          retention-days: 30

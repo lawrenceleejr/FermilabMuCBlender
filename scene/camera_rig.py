@@ -140,30 +140,6 @@ APPROACH = {
 }
 
 
-def _action_fcurves(action):
-    """F-curves of an action, across Blender's two Action APIs.
-
-    Blender 4.4 replaced the flat `action.fcurves` with slotted actions --
-    layers, strips and channelbags -- and 5.x drops the old attribute entirely,
-    so reaching for `action.fcurves` raises AttributeError rather than
-    returning nothing. Both shapes are handled, and an unrecognised one is
-    reported instead of silently leaving the curves on their default
-    interpolation, which would give a linear move with no easing at all.
-    """
-    if hasattr(action, "fcurves"):
-        return list(action.fcurves)
-    out = []
-    for layer in getattr(action, "layers", []):
-        for strip in getattr(layer, "strips", []):
-            for bag in getattr(strip, "channelbags", []):
-                out.extend(bag.fcurves)
-    if not out:
-        raise RuntimeError(
-            "could not reach the camera action's f-curves on this Blender "
-            f"({bpy.app.version_string}); the move would render without easing")
-    return out
-
-
 def animate_approach(cam_obj, scene, preset, *, seconds=15.0, fps=30):
     """Keyframe a camera move from its APPROACH pose into the preset pose.
 
@@ -191,7 +167,7 @@ def animate_approach(cam_obj, scene, preset, *, seconds=15.0, fps=30):
         cam_obj.keyframe_insert(data_path="location", frame=frame)
         cam_obj.keyframe_insert(data_path="rotation_euler", frame=frame)
 
-    for fc in _action_fcurves(cam_obj.animation_data.action):
+    for fc in C.action_fcurves(cam_obj.animation_data.action):
         for kp in fc.keyframe_points:
             kp.interpolation = "SINE"
             kp.easing = "EASE_IN_OUT"

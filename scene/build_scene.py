@@ -55,7 +55,7 @@ import mathutils
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
-from scene import atmosphere, camera_rig, common as C, postfx, site, wilson_hall  # noqa: E402
+from scene import anim, atmosphere, camera_rig, common as C, postfx, site, wilson_hall  # noqa: E402
 
 # Cameras high/wide enough that the site-boundary ribbon reads as an outline on the ground
 # rather than a line across the horizon.
@@ -109,6 +109,8 @@ def parse_args():
     p.add_argument("--animate", type=float, default=0.0,
                    help="render a camera-approach movie of this many seconds instead of a still")
     p.add_argument("--fps", type=int, default=30, help="frame rate for --animate")
+    p.add_argument("--no-descent", action="store_true",
+                   help="with --animate, keep the machines in the ground instead of lowering them in")
     p.add_argument("--no-render", action="store_true")
     p.add_argument("--threads", type=int, default=0)
     return p.parse_args(argv)
@@ -353,6 +355,11 @@ def main():
         # move is compressed into a two-frame test, which is a property of the
         # test rather than of the movie.)
         scene.render.use_motion_blur = False
+        if not args.no_descent:
+            for label, n, z0, s, e in anim.animate_descent(scene, frames):
+                print(f"[render]   {label}: {n} objects from {z0:.0f} m, "
+                      f"frames {s}-{e} ({(e - s) / args.fps:.1f}s, "
+                      f"{z0 / max((e - s) / args.fps, 1e-6):.0f} m/s)")
         stem = os.path.splitext(os.path.abspath(args.out))[0]
         os.makedirs(stem, exist_ok=True)
         scene.render.filepath = os.path.join(stem, "frame_")
