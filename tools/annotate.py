@@ -266,11 +266,13 @@ TITLE_FLOOR = 0.800          # nothing else goes above this on the left
 # The columns need to be wide enough for the longest metric string; an earlier
 # 0.098 gave 157 px for a 187 px string, so six blocks hung past the margin.
 # Set from measured type, not guessed: with the trimmed copy the widest block
-# is 168 px ("two interaction points") = 0.105 of a 1600 px frame, so a 0.115
-# offset holds every string with a pad to spare and leaves the drawing the
+# is the label "6 Detector halls" at 170 px = 0.106 of a 1600 px frame, so a
+# 0.120 offset holds every string with a pad to spare and leaves the drawing the
 # middle 64 % of the width instead of 48 %. That corridor is what lets the site
 # outline stay clear of the text while the camera zooms out rather than in.
-COL_X = (MARGIN + 0.115, 1.0 - MARGIN - 0.115)
+# (0.115 was tried first, from the widest *metric* at 168 px -- the checker's
+# margin test caught the label overrunning it by 2 px.)
+COL_X = (MARGIN + 0.120, 1.0 - MARGIN - 0.120)
 LABEL_FLOOR = LEGEND_BAND[1] + 0.045   # the ladder may not reach into the legend
 
 
@@ -382,60 +384,52 @@ LEADERS: list[tuple[str, tuple, tuple, tuple]] = []   # (key, anchor, knee, end)
 def leader(ax, ax_x, ax_y, lx, ly, colour, s, width, height, *, ha="left", key="",
            dashed=False, text_edge=None, zorder=6):
     """Dog-leg leader: a diagonal off the anchor into a common knee gutter,
-    then a short horizontal run that underlines the text block.
+    then a short horizontal run into the text block.
 
-    Two things were wrong with the previous version. It drew at the same weight
-    and in the same accent hue as the accelerator geometry, so where a cyan
-    leader crossed a cyan tunnel the reader could not tell the pointer from the
-    subject -- a leader is apparatus and must be subordinate to the thing it
-    points at. And it kicked at a fixed 45 degrees, which put every knee at a
-    different x and gave horizontal runs from 70 to 615 px, four of them
-    crossing the whole eastern half of the complex. Launching every diagonal
-    from one vertical spine, `GUTTER` outboard of the text, makes each run the
-    same short length and drops the crossings.
+    Launching every diagonal from one vertical spine, `GUTTER` outboard of the
+    text, keeps each horizontal run the same short length and is what stops the
+    set crossing. The run ends at the metric's baseline so it binds the
+    name/metric pair from below rather than splitting it.
 
-    The run terminates at the metric's baseline rather than between the label
-    and the metric, so it binds the pair from below instead of splitting it.
+    The line stays one neutral grey rather than the category hue: where a cyan
+    leader crossed a cyan tunnel the reader could not tell pointer from subject.
+    But it is drawn at full weight -- a dog-leg has to be traceable from label
+    to subject at a glance, and an earlier pass had de-weighted it to the point
+    of invisibility.
+
+    Where the anchor lies behind its own label block no line is drawn: the
+    label is already beside its subject, so a connector would only cross the
+    type it belongs to. The survey mark carries the association instead, which
+    is what direct labelling means.
     """
     towards = 1.0 if ha == "left" else -1.0     # which way the label lies
-    knee_x = lx - towards * GUTTER
     text_edge = lx if text_edge is None else text_edge
-    # An anchor *inboard* of its own column -- further from frame centre than
-    # the gutter -- is the case that breaks a plain elbow: the horizontal run
-    # then travels back across the label and strikes straight through its own
-    # metric line. Two anchors in this view do that. Such a leader is routed
-    # below the text block instead, where the run reads as an underline binding
-    # the pair rather than a rule through it.
-    # An anchor that lies behind its own label block cannot be reached by any
-    # elbow without crossing the type: two anchors in this view sit at x 0.18
-    # while the left column's text runs out to 0.206. Routing the run under the
-    # block fixed the self-intersection and left the vertical leg still inside
-    # the text column. So no line is drawn at all -- the label is already
-    # beside its subject, and once a callout is adjacent a connector is
-    # redundant. The survey mark alone carries the association, which is what
-    # direct labelling means.
+    knee_x = lx - towards * GUTTER
     behind = (towards < 0 and ax_x < text_edge) or (towards > 0 and ax_x > text_edge)
     if not behind:
+        # if the anchor sits inside the gutter there is no diagonal to draw,
+        # only a straight run in
         if (towards > 0 and ax_x > knee_x) or (towards < 0 and ax_x < knee_x):
             knee_x = ax_x
-            ax.plot([ax_x, knee_x, lx], [ax_y, ly, ly], transform=ax.transAxes, color=LEADER,
+        ax.plot([ax_x, knee_x, lx], [ax_y, ly, ly], transform=ax.transAxes, color=LEADER,
                 alpha=0.92, lw=1.3 * s, solid_capstyle="round", solid_joinstyle="miter",
                 dashes=(4, 3) if dashed else (None, None), zorder=zorder,
                 path_effects=[patheffects.withStroke(linewidth=3.0 * s, foreground="#05070Bcc")])
         if abs(knee_x - ax_x) > 1e-4:
-            ax.plot([knee_x], [ly], transform=ax.transAxes, marker="o", ms=2.2 * s,
-                    mfc=LEADER, mec="none", alpha=0.92, zorder=zorder)
+            # a dot at the corner, so the turn reads as deliberate
+            ax.plot([knee_x], [ly], transform=ax.transAxes, marker="o", ms=2.4 * s,
+                    mfc=LEADER, mec="none", alpha=0.95, zorder=zorder + 1)
         LEADERS.append((key, (ax_x, ax_y), (knee_x, ly), (lx, ly)))
     # the survey mark keeps the category colour: it is the one place the leader
     # touches its subject, so it is where the classification belongs
     if dashed:
         ax.plot([ax_x], [ax_y], transform=ax.transAxes, marker="o", ms=4.4 * s,
-                mfc="none", mec=colour, mew=1.1 * s, zorder=zorder + 1)
+                mfc="none", mec=colour, mew=1.1 * s, zorder=zorder + 2)
     else:
-        ax.plot([ax_x], [ax_y], transform=ax.transAxes, marker="o", ms=3.2 * s,
-                mfc=colour, mec="none", zorder=zorder + 1)
-    ax.plot([ax_x], [ax_y], transform=ax.transAxes, marker="o", ms=9.0 * s,
-            mfc="none", mec=colour, mew=0.7 * s, alpha=0.40, zorder=zorder)
+        ax.plot([ax_x], [ax_y], transform=ax.transAxes, marker="o", ms=3.6 * s,
+                mfc=colour, mec="none", zorder=zorder + 2)
+    ax.plot([ax_x], [ax_y], transform=ax.transAxes, marker="o", ms=9.5 * s,
+            mfc="none", mec=colour, mew=0.8 * s, alpha=0.45, zorder=zorder + 1)
 
 
 def dot(ax, ax_x, ax_y, colour, s, *, dashed=False, zorder=7):
