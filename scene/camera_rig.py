@@ -54,8 +54,20 @@ PRESETS = {
     "overview": dict(location=(1522.0, -5500.0, 2800.0), target=(1522.0, 387.0, 0.0),
                      lens=24.0, fstop=8.0, shift_y=-0.080),
     # the earlier framing: looking south-south-west, galactic centre in frame, north down-right
-    "overview_south": dict(location=(3277.0, 4538.0, 4359.0), target=(1225.0, -1100.0, 0.0),
-                           lens=24.0, fstop=8.0, shift_x=0.030, shift_y=-0.027),
+    # The Milky Way view, and the one place the three-way conflict is resolved
+    # rather than dodged. The galactic centre sits due south at 19.1 deg
+    # altitude, so keeping it in frame bounds the depression angle by the lens:
+    # at 24 mm the camera has to be within 4.4 deg of level, which foreshortens
+    # the rings into slivers; only 16 mm and wider hold both a readable plan
+    # angle and the core. Solved at 15 mm: 17.7 deg depression, the site across
+    # 24 % of the frame, and the galactic centre at (0.52, 0.94) with 40 % of
+    # frame height of sky between it and the site.
+    #
+    # The cost is that north now points away from the camera, so this view
+    # cannot be north-up. That is a choice for the figure to make, not for the
+    # camera: "overview" is the north-up site plan, this is the cover plate.
+    "overview_south": dict(location=(1522.0, 5387.0, 1600.0), target=(1522.0, 387.0, 0.0),
+                           lens=15.0, fstop=8.0, shift_y=-0.020),
 
     # --- other vantages. Note that from the SW the galactic centre is behind the camera,
     # so these see the fainter anti-centre sky.
