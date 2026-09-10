@@ -847,9 +847,15 @@ def build_street_lights(col, *, near=1800.0, mid=16000.0, far=80500.0,
     mid_pts, far_pts = [], []
 
     on_site = CAMPUS_BOUNDARY
-    for layer, spacing, radius in (("major_roads", 105.0, mid),
-                                   ("minor_roads", 95.0, 6500.0),
-                                   ("site_roads", 80.0, 5200.0)):
+    # `site_roads` is highway=service, fetched over the campus box. Off the
+    # campus that tag is mostly parking aisles, and lighting a retail park's
+    # aisles every 80 m saturates it to a white blob brighter than the
+    # laboratory -- the Walmart 2.3 km south-west of Wilson Hall did exactly
+    # that. On-site only for that layer; minor_roads carries the off-site
+    # network at its own spacing.
+    for layer, spacing, radius, site_only in (("major_roads", 105.0, mid, False),
+                                              ("minor_roads", 95.0, 6500.0, False),
+                                              ("site_roads", 80.0, 5200.0, True)):
         for w in geo.ways(layer, min_pts=2, radius=radius):
             pts = [(p[0], p[1]) for p in w["pts"]]
             for i, (x, y) in enumerate(_resample(pts, spacing)):
@@ -857,6 +863,8 @@ def build_street_lights(col, *, near=1800.0, mid=16000.0, far=80500.0,
                 if d > radius:
                     continue
                 in_site = geo.point_in(on_site, x, y)
+                if site_only and not in_site:
+                    continue
                 in_village = math.hypot(x - VILLAGE_C[0], y - VILLAGE_C[1]) < VILLAGE_R
                 # anything on the campus is pole-lit however far out it is
                 if in_site or in_village:
