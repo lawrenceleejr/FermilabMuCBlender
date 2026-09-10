@@ -36,6 +36,7 @@ Options (after the `--`):
   --no-haze              disable the aerial haze volume (--haze-density D to tune)
   --tree-density F       scale tree counts (default 1.0; 0.3 for quick previews)
   --no-grass             skip foreground grass on the low camera
+  --annotations PATH     write JSON projection of named features (for tools/annotate.py)
   --save-blend PATH      also save the .blend
   --no-render            build/save only
 """
@@ -43,11 +44,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 import time
 
 import bpy
+import mathutils
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
@@ -98,6 +101,7 @@ def parse_args():
     p.add_argument("--moon-az", type=float, default=62.0)
     p.add_argument("--moon-el", type=float, default=9.0)
     p.add_argument("--moon-energy", type=float, default=0.12)
+    p.add_argument("--annotations", default="", help="write a JSON projection of the named site features for tools/annotate.py")
     p.add_argument("--save-blend", default="")
     p.add_argument("--no-render", action="store_true")
     p.add_argument("--threads", type=int, default=0)
@@ -123,6 +127,116 @@ def hdri_path(name, res):
         if os.path.exists(p):
             return p
     return os.path.join(C.HDRI_DIR, f"{name}_{res}.hdr")
+
+
+def dump_annotations(path, scene, cam, width, height, sky_meta):
+    """Project the named site features through the render camera and write JSON.
+
+    This is what lets tools/annotate.py put labels exactly on their subjects at
+    any output resolution: the anchors are the same constants the geometry is
+    built from, and the projection is the render camera's own.
+
+    Coordinates are normalised (0..1, origin top-left) so they scale to any
+    resolution. `depth_m` is distance along the camera axis, used to sort labels
+    front-to-back. NOTE: the compositor's lens distortion (~0.4 %) is not
+    modelled here -- it displaces a point by well under a pixel near the centre
+    and at most ~3 px at the extreme corners of a 4K frame.
+    """
+    from bpy_extras.object_utils import world_to_camera_view
+
+    # The camera was just built and aimed via a constraint-free matrix write, so
+    # its evaluated matrix_world is stale until the depsgraph is flushed. Without
+    # this every projection collapses to the origin.
+    bpy.context.view_layer.update()
+
+    anchors = site.annotation_anchors()
+
+    def project(co):
+        ndc = world_to_camera_view(scene, cam, mathutils.Vector(co))
+        return ndc.x, 1.0 - ndc.y, ndc.z
+
+    def resolve(a):
+        """Fixed point, or the sample on a ring/path nearest the screen target."""
+        if "pos" in a:
+            return tuple(a["pos"])
+        if "ring" in a:
+            r = a["ring"]
+            cx, cy = r["center"]
+            rx, ry, z = r["radius"], r.get("ry") or r["radius"], r.get("z", 0.0)
+            samples = [(cx + rx * math.cos(math.radians(t)), cy + ry * math.sin(math.radians(t)), z)
+                       for t in range(0, 360, 2)]
+        else:
+            pts, z = a["path"], a.get("z", 0.0)
+            samples = []
+            for (x0, y0), (x1, y1) in zip(pts, list(pts[1:]) + [pts[0]]):
+                for f in [i / 12.0 for i in range(12)]:
+                    samples.append((x0 + (x1 - x0) * f, y0 + (y1 - y0) * f, z))
+        tx, ty = a.get("prefer", (0.5, 0.5))
+        best, best_d = None, 1e9
+        for co in samples:
+            px, py, depth = project(co)
+            if depth <= 0 or not (0.02 <= px <= 0.98 and 0.02 <= py <= 0.98):
+                continue
+            d = (px - tx) ** 2 + (py - ty) ** 2
+            if d < best_d:
+                best, best_d = co, d
+        return best if best is not None else tuple(samples[0])
+
+    out = {
+        "render": {"width": width, "height": height, "camera": cam.name},
+        "camera": {
+            "location": list(cam.location),
+            "lens_mm": cam.data.lens,
+            "sensor_mm": cam.data.sensor_width,
+        },
+        "sky": sky_meta,
+        "features": {},
+    }
+    for key, a in anchors.items():
+        co = resolve(a)
+        px, py, depth = project(co)
+        out["features"][key] = {
+            "label": a["label"],
+            "metric": a.get("metric", ""),
+            "accent": a.get("accent", "neutral"),
+            "world": list(co),
+            # normalised, origin top-left, so the layout is resolution-independent
+            "x": px,
+            "y": py,
+            "depth_m": depth,
+            "on_screen": bool(0.0 <= px <= 1.0 and 0.0 <= py <= 1.0 and depth > 0),
+        }
+
+    # --- scale: pixels per metre on the ground at the site centroid --------------
+    # A perspective view has no single scale, so the scale bar is quoted at the
+    # centroid and labelled as such.
+    centroid = mathutils.Vector((1225.0, -1100.0, 0.0))
+    east = mathutils.Vector((1.0, 0.0, 0.0))
+    p0 = world_to_camera_view(scene, cam, centroid)
+    p1 = world_to_camera_view(scene, cam, centroid + east * 1000.0)
+    dx = (p1.x - p0.x) * width
+    dy = (p1.y - p0.y) * height
+    out["scale"] = {
+        "reference_world": list(centroid),
+        "reference_x": p0.x,
+        "reference_y": 1.0 - p0.y,
+        "px_per_km_at_reference": math.hypot(dx, dy),
+        "screen_angle_deg_east": math.degrees(math.atan2(-dy, dx)),
+    }
+
+    # --- north, projected at the same reference point -----------------------------
+    n1 = world_to_camera_view(scene, cam, centroid + mathutils.Vector((0.0, 1000.0, 0.0)))
+    ndx = (n1.x - p0.x) * width
+    ndy = (n1.y - p0.y) * height
+    out["north"] = {"screen_angle_deg": math.degrees(math.atan2(-ndy, ndx)), "px_per_km": math.hypot(ndx, ndy)}
+
+    os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+    with open(path, "w") as fh:
+        json.dump(out, fh, indent=2)
+    vis = sum(1 for f in out["features"].values() if f["on_screen"])
+    print(f"[build] wrote {path}: {vis}/{len(out['features'])} features on screen, "
+          f"{out['scale']['px_per_km_at_reference']:.1f} px/km at centroid, north {out['north']['screen_angle_deg']:.1f} deg")
+    return out
 
 
 def main():
@@ -198,6 +312,9 @@ def main():
     postfx.configure_cycles(scene, samples=args.samples, adaptive_threshold=args.adaptive_threshold, time_limit=args.time_limit, threads=args.threads, device=args.device)
     postfx.configure_output(scene, width=w, height=h, path=os.path.abspath(args.out), exposure=args.exposure)
     postfx.build_compositor(scene)
+
+    if args.annotations:
+        dump_annotations(args.annotations, scene, cam, w, h, meta)
 
     if args.save_blend:
         os.makedirs(os.path.dirname(os.path.abspath(args.save_blend)) or ".", exist_ok=True)

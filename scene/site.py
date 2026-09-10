@@ -151,9 +151,13 @@ def build_rings(col, prairie, water):
     C.ring_mesh("tevatron_cooling_ponds", TEV_C, TEV_R - 36.0, [(-12.0, 0.08), (12.0, 0.08)], segments=480, col=col, material=water, smooth=False)
     # Main Injector berm (slightly oval)
     C.ring_mesh("main_injector_berm", MI_C, MI_RX, BERM_PROFILE, ry=MI_RY, segments=360, col=col, material=prairie)
-    # faint amber marker along the Tevatron crest: the reused tunnel
+    # Faint amber markers along the existing machines' crests, so the reused
+    # infrastructure reads at overview scale and can carry a label. Without
+    # these the berms are unlit prairie and effectively invisible at night.
     tev_line = C.emissive_material("tevatron_tunnel_glow", (1.0, 0.62, 0.30), 0.5, camera_strength=1.6)
     C.tube_mesh("tevatron_tunnel_line", C.circle_points(TEV_C, TEV_R, n=480, z=6.6), 0.6, sides=6, col=col, material=tev_line, closed=True)
+    mi_line = C.emissive_material("main_injector_glow", (1.0, 0.58, 0.26), 0.35, camera_strength=1.1)
+    C.tube_mesh("main_injector_line", C.circle_points(MI_C, MI_RX, n=360, ry=MI_RY, z=6.6), 0.6, sides=6, col=col, material=mi_line, closed=True)
 
 
 def build_collider(col, concrete):
@@ -180,9 +184,11 @@ def build_collider(col, concrete):
             C.instance(f"hall_lamp_{i}_{k}", lamp_me, col=col, location=(x + 34 * math.cos(a), y + 34 * math.sin(a), 8.0))
         C.point_light(f"hall_light_{i}", (x, y, 40.0), power=30000, kelvin=6500, radius=6.0, col=col)
 
-    linac = C.emissive_material("linac_beam", (0.85, 0.95, 1.0), 1.5, camera_strength=5.0)
+    linac = C.emissive_material("linac_beam", (0.85, 0.95, 1.0), 1.5, camera_strength=9.0)
     (x0, y0), (x1, y1) = LINAC
-    C.tube_mesh("proton_driver_linac", [(x0, y0, 1.8), (x1, y1, 1.8)], 0.8, sides=8, col=col, material=linac)
+    # 2.2 m radius: at ~8 km a thinner tube falls below a pixel and the label
+    # would point at nothing. Emission plus bloom carries it from there.
+    C.tube_mesh("proton_driver_linac", [(x0, y0, 2.2), (x1, y1, 2.2)], 2.2, sides=8, col=col, material=linac)
     C.box_object("target_hall", (40.0, 18.0, 10.0), (x0 + 0.62 * (x1 - x0), y0 + 22.0, 0), col=col, material=concrete)
 
 
@@ -215,6 +221,83 @@ def build_campus_boundary(col, *, width=11.0, strength=1.2, camera_strength=4.0,
             o.visible_glossy = False
             o.visible_volume_scatter = False
     return obj
+
+
+# --------------------------------------------------------------------------- #
+# named features, for the annotation layer (tools/annotate.py)
+# --------------------------------------------------------------------------- #
+def _ring_pt(c, r, angle_deg, z=0.0, ry=None):
+    a = math.radians(angle_deg)
+    return (c[0] + r * math.cos(a), c[1] + (ry or r) * math.sin(a), z)
+
+
+def annotation_anchors() -> dict[str, dict]:
+    """What is worth labelling, with the copy and where the leader attaches.
+
+    Three anchor kinds. `pos` is a fixed world point. `ring`/`path` give a curve
+    to sample, and `prefer` a normalised screen target: build_scene projects every
+    sample and attaches the leader to whichever lands nearest that target and is
+    on screen. That keeps a label on a clear stretch of its own arc without
+    hard-coding an angle that would silently go wrong if the camera moved.
+
+    Only features that actually render at overview scale appear here -- a leader
+    pointing at nothing is worse than no leader.
+    """
+    return {
+        "collider": dict(
+            ring=dict(center=MC_C, radius=MC_R, z=3.0),
+            prefer=(0.34, 0.55),                       # left extreme of the arc, clear of everything
+            label="Muon Collider Ring",
+            metric="10.0 km circumference",
+            accent="collider",
+        ),
+        "detector_a": dict(
+            pos=_mc_point(MC_IP_ANGLES[0], z=2.0),
+            label="Detector Hall A",
+            metric="interaction point 1",
+            accent="collider",
+        ),
+        "detector_b": dict(
+            pos=_mc_point(MC_IP_ANGLES[1], z=2.0),
+            label="Detector Hall B",
+            metric="interaction point 2",
+            accent="collider",
+        ),
+        "linac": dict(
+            pos=((LINAC[0][0] + LINAC[1][0]) / 2, LINAC[0][1], 2.2),
+            label="Proton Driver",
+            metric="linac and target hall",
+            accent="beam",
+        ),
+        "tevatron": dict(
+            ring=dict(center=TEV_C, radius=TEV_R, z=6.6),
+            prefer=(0.62, 0.67),
+            label="Tevatron Ring",
+            metric="6.3 km, tunnel reused",
+            accent="tevatron",
+        ),
+        "main_injector": dict(
+            ring=dict(center=MI_C, radius=MI_RX, ry=MI_RY, z=6.6),
+            prefer=(0.50, 0.70),
+            label="Main Injector",
+            metric="3.3 km, existing",
+            accent="tevatron",
+        ),
+        "wilson": dict(
+            pos=(0.0, 0.0, 78.0),
+            label="Wilson Hall",
+            metric="central laboratory",
+            accent="neutral",
+        ),
+        "boundary": dict(
+            path=CAMPUS_BOUNDARY,
+            z=2.0,
+            prefer=(0.33, 0.74),                       # the near south-west edge
+            label="Fermilab Site",
+            metric="27 km\u00b2 / 6,800 acres",
+            accent="boundary",
+        ),
+    }
 
 
 # --------------------------------------------------------------------------- #
