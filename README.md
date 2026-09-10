@@ -130,20 +130,25 @@ What keeps it honest rather than decorative:
 * **The scale bar is qualified.** A perspective view has no single scale, so
   the bar is measured at the site centre and says so; the north needle follows
   the true projected ground bearing, which is why it tilts.
-* **Type does the hierarchy.** One 1.25 modular scale, IBM Plex Sans for words
-  and Plex Mono for figures, colour only confirming a label's subject — so it
-  still reads in greyscale.
+* **Leaders are true dog-legs.** The angled leg is held at 45° *on screen* —
+  computed through pixels, since the frame is not square — so every callout
+  kinks at the same angle and the set reads as one drawing.
+* **Type does the hierarchy.** One family (IBM Plex Sans) on one 1.25 modular
+  scale, hierarchy from weight and size, colour only confirming whether a
+  label names something proposed, something existing, or the site itself — so
+  it still reads in greyscale.
 
 ## What is in the scene
 
 | Layer | How it is built |
 |---|---|
 | Wilson Hall | Two lofted towers following `y = 34 - 25 t^2.3` (outer face) so they lean in and meet at the roof; procedural facade with per-floor ribbon windows, randomly lit offices (2700-4200 K), board-formed concrete texture; glazed atrium ends with lit balcony edges; Ramsey Auditorium, plaza, reflecting pond, hyperbolic obelisk, five warm floodlights |
-| Accelerators | Tevatron berm (r = 1000 m) with inner cooling-pond ring and a faint amber tunnel marker; Main Injector berm; the muon collider as a 1590 m-radius emissive tube (cyan, brighter to the camera than to the scene) with a soft sheath, two detector halls at opposite interaction points, and the proton-driver linac meeting the ring at its western crossing |
+| Existing accelerators | Tevatron berm (r = 1000 m) with inner cooling-pond ring and a faint amber crest marker; Main Injector berm with its own marker |
+| Muon collider chain | The stages the machine actually needs, scaled to the real hardware so the figure shows the footprint it would occupy: proton driver complex (linac, accumulator and buncher rings, service halls), pion target hall, a 600 m ionisation cooling channel drawn as discrete modules on a bright beamline, two new rapid-cycling synchrotron tunnels with RF straights (violet-blue, dimmer than the collider so the nested rings stay tellable apart), and the 1590 m-radius collider ring with two detector halls at opposite interaction points. Siting is indicative, not an engineering layout |
 | Site boundary | The ~27 km² campus outline as a glowing ground ribbon with vertex markers, kept dimmer than the beamlines so the hierarchy reads collider > Tevatron > boundary; excluded from diffuse/glossy/volume rays so it marks the site without lighting it. Disable with `--no-boundary` |
 | Site | 60 km prairie plane (Grass004 x Ground037, Voronoi field parcels varying in brightness and hue, tallgrass tint), ten lakes with Fresnel water and wind-stretched ripples, road network with wet asphalt, ~120 sodium/LED lamps, ancillary buildings with hashed lit windows, ~3,700 instanced trees in woods, hedgerows and tree lines (optional distant town-glow strips via `--towns`) |
 | Atmosphere | Physical twilight sky plus the astronomically placed Milky Way and Chicago-area sky glow (see above); homogeneous aerial haze in an 80 km box; a 9 km ground-fog box with exponential height falloff and noise pools (anisotropic forward scattering); optional moon (`--moon`) |
-| Camera | Full-frame 24-40 mm, depth of field on Wilson Hall; presets `northeast` (default: over the reflecting pond toward the galactic core), `overview` (2.0 km up and 6.5 km NNE, framing the whole campus boundary with both rings), `cover` (portrait crop of the northeast vantage), `overlook`, `aerial`, `east`, `aerial_wide`, `high`, `low` (with bokeh prairie grass in the foreground), `portrait` |
+| Camera | Full-frame 24-40 mm, depth of field on Wilson Hall; presets `northeast` (default: over the reflecting pond toward the galactic core), `overview` (3.6 km up and 8 km NNE on a 24° depression, framing the whole campus with the full accelerator chain), `cover` (portrait crop of the northeast vantage), `overlook`, `aerial`, `east`, `aerial_wide`, `high`, `low` (with bokeh prairie grass in the foreground), `portrait` |
 | Look | Cycles with adaptive sampling, path guiding, light tree, OpenImageDenoise; AgX "Punchy"; compositor bloom (two passes), faint chromatic aberration, vignette |
 
 ## Look-dev notes
