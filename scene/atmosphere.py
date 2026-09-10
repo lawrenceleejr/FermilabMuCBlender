@@ -150,9 +150,14 @@ def build_world(
     return world
 
 
-def build_haze(col, *, density=3.5e-5, size=80000.0, height=1800.0, anisotropy=0.35):
+def build_haze(col, *, density=3.5e-5, size=200000.0, height=1800.0, anisotropy=0.35):
     """Homogeneous haze in a huge shallow box: distant ground fades into the sky,
-    while rays leaving through the top still see the sky and stars."""
+    while rays leaving through the top still see the sky and stars.
+
+    The box has to cover the ground it is meant to fade. At 80 km it stopped
+    well short of the far apron, which reaches the 167 km horizon, leaving the
+    most distant ground unhazed and therefore too crisp exactly where the eye
+    expects the horizon to dissolve."""
     mat = bpy.data.materials.new("aerial_haze")
     mat.use_nodes = True
     nt = mat.node_tree

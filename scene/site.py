@@ -197,10 +197,19 @@ def prairie_material():
 
 TERRAIN_GRID = 384          # 60 km / 384 = 156 m per quad
 TERRAIN_HALF = 30000.0
+# At the overview camera's 2200 m altitude the true horizon is sqrt(2 R h) =
+# 167 km away, so ground has to reach about that far or its edge shows as a
+# line below the horizon. The DEM only covers 60 km: at that extent the mesh
+# edge sits 6.8 % of frame height below the horizon, which is a hard seam
+# across the distance view. A flat apron carries the ground the rest of the way,
+# where the haze finishes the job -- a real horizon is a haze gradient, not a
+# line. Beyond 167 km the ground is genuinely below the horizon, so the apron
+# stops there rather than being made arbitrarily large.
+HORIZON_REACH = 167000.0
 
 
-def build_terrain(col, mat, *, grid=TERRAIN_GRID):
-    """The ground, displaced by a real elevation model.
+def build_terrain(col, mat, *, grid=TERRAIN_GRID, apron=True):
+    """The ground, displaced by a real elevation model, with a flat far apron.
 
     Northern Illinois is glacial plain, so there was a temptation to invent
     hills for the distance view. The DEM says not to: within 6 km of the site
@@ -216,8 +225,8 @@ def build_terrain(col, mat, *, grid=TERRAIN_GRID):
     if not geo.has_dem():
         print("[site] no DEM in the baked plan; terrain is flat")
         C.mesh_object("terrain",
-                      [(-TERRAIN_HALF, -TERRAIN_HALF, 0), (TERRAIN_HALF, -TERRAIN_HALF, 0),
-                       (TERRAIN_HALF, TERRAIN_HALF, 0), (-TERRAIN_HALF, TERRAIN_HALF, 0)],
+                      [(-HORIZON_REACH, -HORIZON_REACH, 0), (HORIZON_REACH, -HORIZON_REACH, 0),
+                       (HORIZON_REACH, HORIZON_REACH, 0), (-HORIZON_REACH, HORIZON_REACH, 0)],
                       [(0, 1, 2, 3)], col=col, material=mat)
         return
     verts, faces = geo.dem_grid(grid, TERRAIN_HALF)
@@ -225,6 +234,33 @@ def build_terrain(col, mat, *, grid=TERRAIN_GRID):
     print(f"[site] terrain {grid}x{grid} over {2 * TERRAIN_HALF / 1000:.0f} km, "
           f"z {min(zs):+.0f}..{max(zs):+.0f} m")
     C.mesh_object("terrain", verts, faces, col=col, material=mat, smooth=True)
+
+    if not apron:
+        return
+    # Four quads forming a frame around the DEM rather than one big plane under
+    # it: no overlap, so nothing z-fights with the displaced mesh. Each side
+    # takes the DEM's own mean elevation along that edge, which keeps the seam
+    # at a few tens of metres over 30 km -- well under a pixel at this distance.
+    h, R = TERRAIN_HALF, HORIZON_REACH
+    n = 24
+    def edge_mean(fixed, axis):
+        vals = []
+        for i in range(n + 1):
+            t = -h + 2 * h * i / n
+            vals.append(geo.elev(fixed, t) if axis == "x" else geo.elev(t, fixed))
+        return sum(vals) / len(vals)
+    zw, ze = edge_mean(-h, "x"), edge_mean(h, "x")
+    zs_, zn = edge_mean(-h, "y"), edge_mean(h, "y")
+    sides = {
+        "apron_n": ([(-R, h, zn), (R, h, zn), (R, R, zn), (-R, R, zn)]),
+        "apron_s": ([(-R, -R, zs_), (R, -R, zs_), (R, -h, zs_), (-R, -h, zs_)]),
+        "apron_w": ([(-R, -h, zw), (-h, -h, zw), (-h, h, zw), (-R, h, zw)]),
+        "apron_e": ([(h, -h, ze), (R, -h, ze), (R, h, ze), (h, h, ze)]),
+    }
+    for name, vs in sides.items():
+        C.mesh_object(name, vs, [(0, 1, 2, 3)], col=col, material=mat)
+    print(f"[site] far apron out to {R / 1000:.0f} km (the horizon at 2.2 km altitude), "
+          f"edge z N{zn:+.0f} S{zs_:+.0f} E{ze:+.0f} W{zw:+.0f} m")
 
 
 # --------------------------------------------------------------------------- #
