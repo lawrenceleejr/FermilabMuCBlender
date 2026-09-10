@@ -435,17 +435,19 @@ def vignette(ax, anno, width, height, *, strength=0.78, r0=0.285, r1=0.44,
         # the subject's own farthest corner, in the same metric as r0/r1
         far = math.hypot(hx / stretch, hy * height / width)
 
-    # r0 is never allowed inside the subject. A ramp that starts on the site
-    # meets the brightest thing in the frame while it is still steep, and that
-    # shows: at stretch 1.0 -- a true circle -- the subject's corner sits at
-    # 0.301 against an r0 of 0.285, and the seam test picked out the ring. The
-    # 12 % stretch is what buys the clearance, which is the whole reason the
-    # contours are not perfectly circular.
-    if r0 < far:
-        print(f"[annotate] vignette: r0 {r0:.3f} would start inside the subject "
-              f"(which reaches {far:.3f}); holding it out to there instead")
-        r1 += far - r0
-        r0 = far
+    # r0 is allowed inside the subject, and with a long enough ramp it should
+    # be: starting the falloff early is what makes the vignette read as a lens
+    # rather than as a spotlight with the subject cut out of it. What matters
+    # is not whether the ramp begins on the site but how much of it lands
+    # there, so that is what is computed and reported -- the alpha at the
+    # subject's own farthest corner. A hard clamp was tried first and is the
+    # wrong instrument: it forbids the soft, early falloff outright.
+    t_far = min(max((far - r0) / max(r1 - r0, 1e-6), 0.0), 1.0)
+    a_far = strength * t_far * t_far * (3.0 - 2.0 * t_far)
+    if a_far > 0.10:
+        print(f"[annotate] WARNING: the vignette reaches alpha {a_far:.3f} at the "
+              f"subject's far corner (radius {far:.3f} against r0 {r0:.3f}); that is "
+              f"enough to darken the site. Raise r0 or lengthen the ramp.")
 
     n = 512
     dx = (np.linspace(0.0, 1.0, n)[None, :] - cx) / stretch
@@ -456,8 +458,8 @@ def vignette(ax, anno, width, height, *, strength=0.78, r0=0.285, r1=0.44,
     rgba[..., 3] = strength * (t * t * (3.0 - 2.0 * t))     # smoothstep
     ax.imshow(rgba, extent=(0, 1, 0, 1), transform=ax.transAxes, origin="lower",
               aspect="auto", zorder=zorder, interpolation="bilinear")
-    return dict(centre=(cx, cy), subject_radius=far, r0=r0, r1=r1,
-                stretch=stretch, strength=strength)
+    return dict(centre=(cx, cy), subject_radius=far, alpha_at_subject=a_far,
+                r0=r0, r1=r1, stretch=stretch, strength=strength)
 
 
 LEADERS: list[tuple[str, tuple, tuple, tuple]] = []   # (key, anchor, knee, end) in axes coords
@@ -1238,10 +1240,10 @@ def build(args) -> int:
             ax.axhline(gx, color="#FF3B3055", lw=0.6 * s, zorder=4)
     else:
         vg = vignette(ax, anno, width, height)
-        flag = "" if vg["r0"] >= vg["subject_radius"] - 1e-9 else "  <-- BITES INTO THE SUBJECT"
         print(f"[annotate] vignette: centre ({vg['centre'][0]:.3f}, {vg['centre'][1]:.3f}), "
-              f"clear to {vg['r0']:.3f}, full at {vg['r1']:.3f}, stretch {vg['stretch']:.2f}, "
-              f"strength {vg['strength']:.2f}; the subject reaches {vg['subject_radius']:.3f}{flag}")
+              f"from {vg['r0']:.3f} to {vg['r1']:.3f}, stretch {vg['stretch']:.2f}, "
+              f"strength {vg['strength']:.2f}; the subject reaches {vg['subject_radius']:.3f} "
+              f"where alpha is {vg['alpha_at_subject']:.3f}")
         title_floor, title_right = draw_title(ax, F, s, width, height, copy=dict(
             title=args.title or TITLE["title"],
             deck=(args.deck.replace("\\n", "\n") if args.deck else TITLE["deck"]),
