@@ -69,18 +69,21 @@ TYPE = {
 # architectural callout. Labels sit in two columns clear of the title block and
 # the footer, which is why the numbers look regular rather than tuned per label.
 LAYOUTS = {
+    # Ordered down each column to match the order of the anchors' heights, which
+    # is what keeps the dog-legs from crossing one another.
     "overview": {
         # left column
-        "detector_b":    dict(lx=0.150, ly=0.560, ha="right"),
-        "collider":      dict(lx=0.150, ly=0.450, ha="right"),
-        "boundary":      dict(lx=0.150, ly=0.255, ha="right"),
+        "detector_b":    dict(lx=0.145, ly=0.600, ha="right"),
+        "main_injector": dict(lx=0.145, ly=0.490, ha="right"),
+        "rcs":           dict(lx=0.145, ly=0.380, ha="right"),
+        "collider":      dict(lx=0.145, ly=0.270, ha="right"),
+        "boundary":      dict(lx=0.145, ly=0.163, ha="right"),
         # right column
-        "linac":         dict(lx=0.850, ly=0.605, ha="left"),
-        "wilson":        dict(lx=0.850, ly=0.495, ha="left"),
-        "detector_a":    dict(lx=0.850, ly=0.385, ha="left"),
-        "tevatron":      dict(lx=0.850, ly=0.275, ha="left"),
-        # centre-bottom
-        "main_injector": dict(lx=0.430, ly=0.300, ha="right"),
+        "proton_driver": dict(lx=0.855, ly=0.600, ha="left"),
+        "cooling":       dict(lx=0.855, ly=0.490, ha="left"),
+        "wilson":        dict(lx=0.855, ly=0.380, ha="left"),
+        "detector_a":    dict(lx=0.855, ly=0.270, ha="left"),
+        "tevatron":      dict(lx=0.855, ly=0.163, ha="left"),
     },
     "northeast": {
         "wilson":        dict(lx=0.820, ly=0.660, ha="left"),
@@ -102,17 +105,15 @@ TITLE = dict(
 def load_fonts() -> dict[str, fm.FontProperties]:
     """Register the self-hosted IBM Plex TTFs and return FontProperties by role.
 
-    IBM Plex is a superfamily, so the sans and mono pair by construction. Sans
-    carries the words; mono carries the numbers, where its fixed advance widths
-    keep columns of figures aligned and visually signal 'measured data'.
+    One family throughout -- IBM Plex Sans, which was designed for technical
+    contexts and holds up at label sizes. Hierarchy comes from weight and size
+    alone, which is steadier than mixing in a second face.
     """
     faces = {
         "sans_light": "IBMPlexSans-300.ttf",
         "sans": "IBMPlexSans-400.ttf",
         "sans_med": "IBMPlexSans-500.ttf",
         "sans_semi": "IBMPlexSans-600.ttf",
-        "mono": "IBMPlexMono-400.ttf",
-        "mono_med": "IBMPlexMono-500.ttf",
     }
     out: dict[str, fm.FontProperties] = {}
     missing = []
@@ -166,22 +167,32 @@ def scrim(ax, x0, y0, x1, y1, *, strength=0.62, direction="left", zorder=2):
               origin="lower", aspect="auto", zorder=zorder, interpolation="bilinear")
 
 
-def leader(ax, ax_x, ax_y, lx, ly, colour, s, *, ha="left", zorder=6):
-    """Two-segment elbow leader from an anchor dot to the label baseline.
+def leader(ax, ax_x, ax_y, lx, ly, colour, s, width, height, *, ha="left", zorder=6):
+    """Dog-leg leader: a 45-degree kick off the anchor, then a horizontal run
+    into the text.
 
-    The short horizontal run into the text is what makes a callout look drawn
-    rather than dropped: the eye follows the horizontal into the words.
+    The angled leg is held at a true 45 degrees *on screen* -- computed through
+    pixels, since the frame is not square -- so every callout kinks at the same
+    angle and the set reads as one drawing rather than ten separate arrows. The
+    horizontal run is what carries the eye into the words.
     """
-    run = 0.026 if ha == "left" else -0.026
-    knee_x = lx + run
+    towards = 1.0 if ha == "left" else -1.0     # which way the label lies
+    # horizontal axes-distance that makes the diagonal 45 deg on screen
+    run = abs((ly - ax_y) * height) / width
+    knee_x = ax_x + towards * run
+    # do not overshoot the label; if the anchor is already past it, go straight
+    if (towards > 0 and knee_x > lx) or (towards < 0 and knee_x < lx):
+        knee_x = lx
     ax.plot([ax_x, knee_x, lx], [ax_y, ly, ly], transform=ax.transAxes, color=colour,
-            alpha=0.85, lw=0.9 * s, solid_capstyle="round", solid_joinstyle="round", zorder=zorder)
-    # a filled dot with a wide soft ring: reads as a survey mark, and stays
-    # visible whether it lands on dark ground or on a bright beamline
+            alpha=0.9, lw=1.0 * s, solid_capstyle="round", solid_joinstyle="miter",
+            zorder=zorder,
+            path_effects=[patheffects.withStroke(linewidth=2.6 * s, foreground="#05070B99")])
+    # a filled dot inside a wide soft ring: reads as a survey mark, and stays
+    # legible whether it lands on dark ground or on a bright beamline
     ax.plot([ax_x], [ax_y], transform=ax.transAxes, marker="o", ms=3.2 * s,
             mfc=colour, mec="none", zorder=zorder + 1)
     ax.plot([ax_x], [ax_y], transform=ax.transAxes, marker="o", ms=9.0 * s,
-            mfc="none", mec=colour, mew=0.7 * s, alpha=0.40, zorder=zorder)
+            mfc="none", mec=colour, mew=0.7 * s, alpha=0.45, zorder=zorder)
 
 
 def text(ax, x, y, body, fp, size, colour, s, *, ha="left", va="center", zorder=8, shadow=True, alpha=1.0):
@@ -207,7 +218,7 @@ def axes_dir(vec_px, width, height):
 
 
 def draw_title(ax, F, s, copy=None):
-    scrim(ax, 0.0, 0.58, 0.66, 1.0, strength=0.68, direction="left")
+    scrim(ax, 0.0, 0.62, 0.62, 1.0, strength=0.80, direction="left")
     x = 0.038
     copy = copy or TITLE
     if copy.get("eyebrow"):
@@ -244,13 +255,13 @@ def draw_footer(ax, F, s, anno):
     utc = sky.get("utc", "n/a")
     phase = sky.get("twilight_phase", "")
     col = 0.335
-    text(ax, col, 0.082, f"{utc} UTC   ·   {phase}", F["mono_med"], TYPE["meta"], INK, s, alpha=0.92)
+    text(ax, col, 0.082, f"{utc} UTC   ·   {phase}", F["sans_med"], TYPE["meta"], INK, s, alpha=0.92)
     text(ax, col, 0.053,
          f"sun {sun_a:+.1f}° alt {sun_z:.0f}° az   ·   galactic centre {gc_a:.0f}° alt {gc_z:.0f}° az   ·   "
          f"{cam.get('lens_mm', 0):.0f} mm at {loc[2]:.0f} m",
-         F["mono"], TYPE["meta"], INK_DIM, s)
-    text(ax, 0.038, 0.023, "Cycles / procedural scene · star field NASA GSFC SVS Deep Star Maps 2020, Gaia DR2 (ESA/Gaia/DPAC)",
-         F["mono"], TYPE["meta"] * 0.88, INK_DIM, s, alpha=0.6)
+         F["sans"], TYPE["meta"], INK_DIM, s)
+    text(ax, 0.038, 0.023, "Procedural Cycles scene · star field NASA GSFC SVS Deep Star Maps 2020, Gaia DR2 (ESA/Gaia/DPAC)",
+         F["sans"], TYPE["meta"] * 0.88, INK_DIM, s, alpha=0.6)
 
 
 def draw_scale_and_north(ax, F, s, anno, width, height):
@@ -282,7 +293,7 @@ def draw_scale_and_north(ax, F, s, anno, width, height):
     for f in (0.0, 0.5, 1.0):
         tx, ty = x0 + dx * f, y0 + dy * f
         ax.plot([tx, tx + nx], [ty, ty + ny], transform=ax.transAxes, color=INK, lw=1.5 * s, zorder=8)
-        text(ax, tx + nx * 2.0, ty + ny * 2.0, f"{km * f:.0f}", F["mono"], TYPE["meta"], INK, s,
+        text(ax, tx + nx * 2.0, ty + ny * 2.0, f"{km * f:.0f}", F["sans"], TYPE["meta"], INK, s,
              ha="center", va="center")
     mid_x, mid_y = x0 + dx * 0.5, y0 + dy * 0.5
     text(ax, mid_x - nx * 2.4, mid_y - ny * 2.4, "km at site centre", F["sans"], TYPE["metric"],
@@ -314,12 +325,12 @@ def draw_features(ax, F, s, anno, layout_name, width, height):
         ax_x, ax_y = f["x"], 1.0 - f["y"]          # axes fractions have y up
         lx, ly, ha = L["lx"], L["ly"], L.get("ha", "left")
         colour = ACCENT.get(f.get("accent", "neutral"), ACCENT["neutral"])
-        leader(ax, ax_x, ax_y, lx, ly, colour, s, ha=ha)
+        leader(ax, ax_x, ax_y, lx, ly, colour, s, width, height, ha=ha)
         pad = 0.011
         tx = lx + (pad if ha == "left" else -pad)
         text(ax, tx, ly + 0.017, f["label"], F["sans_med"], TYPE["label"], INK, s, ha=ha, va="center")
         if f.get("metric"):
-            text(ax, tx, ly - 0.017, f["metric"], F["mono"], TYPE["metric"], colour, s,
+            text(ax, tx, ly - 0.017, f["metric"], F["sans"], TYPE["metric"], colour, s,
                  ha=ha, va="center", alpha=0.95)
         drawn += 1
     skipped = [k for k in layout if k not in feats or not feats[k].get("on_screen")]
@@ -361,7 +372,7 @@ def build(args) -> int:
             x, y = f["x"], 1.0 - f["y"]
             ax.plot([x], [y], transform=ax.transAxes, marker="+", ms=14 * s, mew=1.4 * s,
                     color="#FF3B30", zorder=9)
-            text(ax, x + 0.006, y, f"{key}  ({x:.3f},{f['y']:.3f})", F["mono"], 8.5, "#FF3B30", s)
+            text(ax, x + 0.006, y, f"{key}  ({x:.3f},{f['y']:.3f})", F["sans"], 8.5, "#FF3B30", s)
         for gx in np.arange(0.1, 1.0, 0.1):
             ax.axvline(gx, color="#FF3B3055", lw=0.6 * s, zorder=4)
             ax.axhline(gx, color="#FF3B3055", lw=0.6 * s, zorder=4)

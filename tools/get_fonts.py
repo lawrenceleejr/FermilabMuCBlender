@@ -25,11 +25,11 @@ FONT_DIR = os.path.join(ROOT, "assets", "fonts")
 # An old UA makes the CSS2 API serve TrueType rather than woff2.
 UA_TTF = "Mozilla/4.0"
 
-# IBM Plex is a superfamily (sans + mono pair by construction) designed for
-# technical and engineering contexts, and it holds up at label sizes.
+# One family throughout: IBM Plex Sans, designed for technical and engineering
+# contexts, holding up at label sizes. Hierarchy comes from weight, not from a
+# second face.
 DEFAULT_FAMILIES = [
     "IBM Plex Sans:wght@300;400;500;600",
-    "IBM Plex Mono:wght@400;500",
 ]
 
 FACE_RE = re.compile(r"@font-face\s*\{([^}]*)\}", re.S)

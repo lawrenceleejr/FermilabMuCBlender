@@ -20,7 +20,26 @@ TEV_C, TEV_R = (1150.0, 0.0), 1000.0                 # Tevatron main ring (6.3 k
 MI_C, MI_RX, MI_RY = (650.0, -1600.0), 560.0, 490.0    # Main Injector (3.3 km)
 MC_C, MC_R = (1300.0, -1150.0), 1590.0                # proposed 10 km collider ring
 MC_IP_ANGLES = (120.0, 300.0)                         # detector halls (deg, opposite); 120 deg sits NE of Wilson Hall, in frame
-LINAC = ((-1000.0, -1600.0), (-225.0, -1600.0))       # proton driver -> ring (west crossing)
+LINAC = ((-1000.0, -1600.0), (-225.0, -1600.0))       # proton driver linac, west of the site
+
+# --- the muon-collider accelerator chain -------------------------------------
+# Indicative siting of the stages a muon collider needs, in the order the beam
+# sees them: proton driver -> target -> muon cooling -> RCS acceleration ->
+# collider ring. Geometry is schematic but scaled to the real machines' sizes,
+# so the figure shows the actual footprint the complex would need on this site.
+PD_ACCUM_C, PD_ACCUM_R = (-250.0, -1770.0), 120.0     # accumulator ring
+PD_BUNCH_C, PD_BUNCH_R = (-250.0, -2010.0), 95.0      # buncher / compressor ring
+TARGET_XY = (-520.0, -1578.0)                          # pion production target hall
+
+# Ionisation cooling channel: a long chain of absorber/RF modules. ~600 m here.
+COOLING_PATH = [(-430.0, -1500.0), (-250.0, -1430.0), (-60.0, -1330.0),
+                (100.0, -1215.0), (215.0, -1080.0)]
+COOLING_MODULES = 20
+
+# Rapid-cycling synchrotrons that accelerate the muons before injection. RCS 1
+# reuses the Tevatron tunnel; these are the two new rings of the chain.
+RCS_C = TEV_C
+RCS_RADII = (1200.0, 1390.0)
 
 SITE_X = (-1000.0, 3450.0)   # Kirk Rd .. Eola Rd
 SITE_Y = (-4000.0, 1800.0)   # south boundary .. Butterfield Rd
@@ -184,6 +203,10 @@ def build_collider(col, concrete):
             C.instance(f"hall_lamp_{i}_{k}", lamp_me, col=col, location=(x + 34 * math.cos(a), y + 34 * math.sin(a), 8.0))
         C.point_light(f"hall_light_{i}", (x, y, 40.0), power=30000, kelvin=6500, radius=6.0, col=col)
 
+    _build_rcs(col, concrete)
+    _build_proton_driver(col, concrete)
+    _build_cooling_channel(col, concrete)
+
     linac = C.emissive_material("linac_beam", (0.85, 0.95, 1.0), 1.5, camera_strength=9.0)
     (x0, y0), (x1, y1) = LINAC
     # 2.2 m radius: at ~8 km a thinner tube falls below a pixel and the label
@@ -221,6 +244,81 @@ def build_campus_boundary(col, *, width=11.0, strength=1.2, camera_strength=4.0,
             o.visible_glossy = False
             o.visible_volume_scatter = False
     return obj
+
+
+def _build_rcs(col, concrete):
+    """The two new rapid-cycling synchrotron tunnels of the acceleration chain.
+
+    Drawn violet-blue and dimmer than the collider so the nested rings are
+    tellable apart at a glance: the brightest ring is the machine that collides.
+    """
+    tunnel = C.emissive_material("rcs_tunnel", (0.55, 0.52, 1.0), 1.2, camera_strength=7.0)
+    for i, r in enumerate(RCS_RADII, start=2):
+        C.tube_mesh(f"rcs_{i}_tunnel", C.circle_points(RCS_C, r, n=560, z=4.4), 0.7,
+                    sides=6, col=col, material=tunnel, closed=True)
+    # RF straight sections: short brighter runs, one per ring, so the rings read
+    # as machines rather than as contour lines
+    rf = C.emissive_material("rcs_rf", (0.72, 0.70, 1.0), 2.5, camera_strength=16.0)
+    for i, r in enumerate(RCS_RADII, start=2):
+        for k in range(4):
+            a0 = math.radians(90 * k + 12)
+            a1 = a0 + math.radians(11)
+            pts = [(RCS_C[0] + r * math.cos(a), RCS_C[1] + r * math.sin(a), 4.4)
+                   for a in [a0 + (a1 - a0) * j / 8 for j in range(9)]]
+            C.tube_mesh(f"rcs_{i}_rf_{k}", pts, 1.5, sides=6, col=col, material=rf)
+
+
+def _build_proton_driver(col, concrete):
+    """Proton driver complex: linac hall, accumulator and buncher rings.
+
+    The linac itself is built in build_collider (it predates this function);
+    here are the rings that bunch the beam before it hits the target.
+    """
+    ring = C.emissive_material("pd_ring", (0.80, 0.90, 1.0), 1.8, camera_strength=11.0)
+    for name, c, r in (("accumulator", PD_ACCUM_C, PD_ACCUM_R), ("buncher", PD_BUNCH_C, PD_BUNCH_R)):
+        C.tube_mesh(f"pd_{name}", C.circle_points(c, r, n=160, z=3.0), 1.1, sides=6,
+                    col=col, material=ring, closed=True)
+    # service halls along the complex
+    unit = C.box_mesh_data("pd_box")
+    hall = _lit_box_material("pd_hall", (0.26, 0.26, 0.25), lit_color=C.kelvin_rgb(4000),
+                             lit_strength=0.7, band=(0.45, 0.72), lit_fraction=0.35, seed=17.0)
+    for i, (x, y, sx, sy, sz) in enumerate((
+        (-640.0, -1690.0, 90.0, 26.0, 9.0),
+        (-380.0, -1610.0, 54.0, 24.0, 11.0),
+        (-250.0, -1900.0, 40.0, 20.0, 8.0),
+    )):
+        me = unit.copy()
+        me.materials.append(hall)
+        C.instance(f"pd_hall_{i}", me, col=col, location=(x, y, 0.0), scale=(sx, sy, sz))
+    C.point_light("pd_light", (-430.0, -1750.0, 30.0), power=14000, kelvin=4200, radius=8.0, col=col)
+
+
+def _build_cooling_channel(col, concrete):
+    """Muon ionisation cooling complex: a chain of absorber/RF modules.
+
+    Modelled as discrete modules on a bright beamline, because that beading is
+    what distinguishes a cooling channel from any other length of beam pipe.
+    """
+    beam = C.emissive_material("cooling_beam", (0.62, 0.95, 0.95), 2.0, camera_strength=13.0)
+    mod = C.emissive_material("cooling_module", (0.85, 1.0, 1.0), 3.0, camera_strength=26.0)
+    pts = [(x, y, 3.0) for x, y in COOLING_PATH]
+    C.tube_mesh("cooling_beamline", pts, 1.2, sides=8, col=col, material=beam)
+
+    # walk the polyline at even parameter and drop a module at each step
+    me = C.sphere_mesh_data("cooling_module_m", 3.4, subdiv=1)
+    me.materials.append(mod)
+    segs = list(zip(COOLING_PATH, COOLING_PATH[1:]))
+    for i in range(COOLING_MODULES):
+        t = i / (COOLING_MODULES - 1) * len(segs)
+        k = min(int(t), len(segs) - 1)
+        f = t - k
+        (x0, y0), (x1, y1) = segs[k]
+        C.instance(f"cooling_module_{i}", me, col=col,
+                   location=(x0 + (x1 - x0) * f, y0 + (y1 - y0) * f, 4.0))
+    hall = C.box_object("cooling_hall", (70.0, 30.0, 12.0), (-350.0, -1560.0, 0.0),
+                        col=col, material=concrete)
+    C.point_light("cooling_light", (-100.0, -1300.0, 28.0), power=12000, kelvin=5200, radius=8.0, col=col)
+    return hall
 
 
 # --------------------------------------------------------------------------- #
@@ -263,11 +361,24 @@ def annotation_anchors() -> dict[str, dict]:
             metric="interaction point 2",
             accent="collider",
         ),
-        "linac": dict(
-            pos=((LINAC[0][0] + LINAC[1][0]) / 2, LINAC[0][1], 2.2),
-            label="Proton Driver",
-            metric="linac and target hall",
-            accent="beam",
+        "proton_driver": dict(
+            pos=(PD_ACCUM_C[0], PD_ACCUM_C[1] + PD_ACCUM_R, 3.0),
+            label="Proton Driver Complex",
+            metric="linac, accumulator, target",
+            accent="collider",
+        ),
+        "cooling": dict(
+            pos=(COOLING_PATH[-1][0], COOLING_PATH[-1][1], 4.0),
+            label="Muon Cooling Complex",
+            metric="ionisation cooling channel",
+            accent="collider",
+        ),
+        "rcs": dict(
+            ring=dict(center=RCS_C, radius=RCS_RADII[-1], z=4.4),
+            prefer=(0.30, 0.30),
+            label="RCS Tunnels",
+            metric="rapid-cycling acceleration",
+            accent="collider",
         ),
         "tevatron": dict(
             ring=dict(center=TEV_C, radius=TEV_R, z=6.6),
