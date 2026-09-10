@@ -96,9 +96,20 @@ def parse_args():
     p.add_argument("--fog-density", type=float, default=3.2e-3)
     p.add_argument("--no-fog", action="store_true")
     p.add_argument("--no-haze", action="store_true")
-    # the ground-level density now, not a uniform one: build_haze falls off as
-    # exp(-z / 520 m), so the same number means much more haze than it did
-    p.add_argument("--haze-density", type=float, default=8.0e-5)
+    # The ground-level density, not a uniform one: build_haze falls off as
+    # exp(-z / 520 m). 1.4e-4 was chosen against measurements at three values.
+    # Haze shows up as lost contrast in the distance rather than as a darker
+    # distance, so contrast is what was measured (mean local sd, 9 px window):
+    #
+    #                  8e-5      1.4e-4     2.4e-4
+    #   far ground     6.68       ~5.0       2.86     (no haze: 6.67)
+    #   horizon        8.02        --        5.45     (no haze: 9.10)
+    #   sky            2.24        --        2.25     (no haze: 2.24)
+    #
+    # 8e-5 measured indistinguishable from the old uniform 3e-5 at the horizon.
+    # 2.4e-4 takes 57 % of the far ground's contrast and dissolves the distant
+    # town lighting the 50-mile register exists to show. This sits between.
+    p.add_argument("--haze-density", type=float, default=1.4e-4)
     p.add_argument("--no-stars", action="store_true")
     p.add_argument("--tree-density", type=float, default=1.0)
     p.add_argument("--no-grass", action="store_true")

@@ -157,13 +157,17 @@ CHAIN = [
          purpose="Cathedral-sized detectors measure collision products "
                  "in presence of large beam background"),
 ]
+# The context callouts carry an explicit `side`. The chain's own order settles
+# where its stages go, but these three are outside the sequence, so there is no
+# rule to derive their column from -- it is an editorial choice, and typing it
+# is clearer than inventing a rule that happens to produce it.
 CONTEXT = [
-    dict(keys=["boundary"], label="Fermilab Site",
-         purpose="27.7 km\u00b2 campus contains the entire chain"),
-    dict(keys=["tevatron"], label="Tevatron Ring",
+    dict(keys=["tevatron"], label="Tevatron Ring", side="left",
          purpose="Existing 6.28 km tunnel, reused for the first synchrotrons"),
-    dict(keys=["main_injector"], label="Main Injector",
+    dict(keys=["main_injector"], label="Main Injector", side="right",
          purpose="Existing 3.32 km synchrotron, available for reuse"),
+    dict(keys=["boundary"], label="Fermilab Site", side="right",
+         purpose="27.7 km\u00b2 campus contains the entire chain"),
 ]
 
 LAYOUTS = {
@@ -814,10 +818,17 @@ def draw_features(ax, F, s, anno, layout_name, width, height, *,
     # camera moves.
     chain = sorted((g for g in groups if g[0].get("stage")),
                    key=lambda t: t[0]["stage"])
-    context = sorted((g for g in groups if not g[0].get("stage")),
-                     key=lambda t: -(1.0 - feats[t[1][0]]["y"]))
+    context = [g for g in groups if not g[0].get("stage")]
     cut = (len(chain) + 1) // 2
-    columns = {"left": chain[:cut], "right": chain[cut:] + context}
+    columns = {"left": chain[:cut], "right": chain[cut:]}
+    # a callout with an explicit side overrides the split, in either direction
+    for g in chain:
+        side = g[0].get("side")
+        if side and g not in columns[side]:
+            columns["left" if side == "right" else "right"].remove(g)
+            columns[side].append(g)
+    for g in context:
+        columns[g[0].get("side", "right")].append(g)
 
     placed = []
     for side, items in columns.items():

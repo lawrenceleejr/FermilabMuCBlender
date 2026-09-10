@@ -150,7 +150,7 @@ def build_world(
     return world
 
 
-def build_haze(col, *, density=8.0e-5, size=200000.0, height=1800.0, anisotropy=0.35,
+def build_haze(col, *, density=1.4e-4, size=200000.0, height=1800.0, anisotropy=0.35,
                scale_height=520.0, patch_scale=7000.0, patch=0.35, seed=7.0):
     """Aerial haze: exponential in height, patchy in plan, in a huge shallow box.
 
@@ -159,18 +159,38 @@ def build_haze(col, *, density=8.0e-5, size=200000.0, height=1800.0, anisotropy=
     most distant ground unhazed and therefore too crisp exactly where the eye
     expects the horizon to dissolve.
 
-    `density` is now the density at the ground and it falls off as
+    `density` is the density at the ground and it falls off as
     exp(-z / scale_height), where before it was uniform through the whole
-    1800 m slab. Uniform is the wrong shape for what haze does to a view like
-    this one. Work the sightlines: the camera sits at 2600 m, so a ray to a
-    ground light 80 km out descends steadily, and integrating along it gives an
-    optical depth of 0.74 under the old uniform slab against 1.27 here -- the
-    distance roughly doubles its haze. A ray to a target 5 km away spends
-    almost all its length above 2 km and picks up 0.08, so the near ground
-    stays crisp. A ray leaving upward from the camera sees 0.7 % of the ground
-    density and the star field is untouched. That separation -- far hazy, near
-    crisp, sky clear -- is aerial perspective, and a uniform slab cannot
-    produce it: it fades everything in proportion to distance alone.
+    1800 m slab.
+
+    What that buys, measured rather than reasoned about. Three renders of this
+    frame -- no haze, the old uniform 3e-5, and this at 8e-5 -- give these mean
+    luminances against the no-haze case:
+
+                        uniform 3e-5     falloff 8e-5
+        sky                  -0.00            -0.00
+        horizon              -8.86            -8.88
+        far ground           -7.29            -8.13
+        middle               -0.91            -1.53
+        near                 +1.44            +1.37
+
+    So the haze was already doing the bulk of the work -- nine luminance units
+    at the horizon and nothing at all to the sky -- and this change moved the
+    horizon not at all and the far ground by 11 %. An earlier version of this
+    docstring worked the sightline integrals and concluded the distance would
+    roughly double its haze; the integrals were right about extinction and
+    wrong about the result, because in-scattered skylight and city light rise
+    with density too and largely cancel the extra extinction in the mean. Haze
+    of this kind shows up as lost *contrast* in the distance, not as a darker
+    distance.
+
+    What the falloff does earn is the distribution. The sky column reads -0.00
+    at both densities: rays leaving upward from a camera at 2600 m see 0.7 % of
+    the ground density, so the star field is untouched however hazy the horizon
+    gets, and the near ground (+1.4) stays crisp. A uniform slab cannot
+    separate those -- it fades everything in proportion to path length alone --
+    and it is what lets `density` be raised for a hazier distance without
+    washing the stars out.
 
     The plan-view noise is the other half. A homogeneous volume gives the
     distance an even wash, and real air over a city at night is banded and
