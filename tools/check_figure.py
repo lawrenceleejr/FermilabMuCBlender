@@ -180,7 +180,19 @@ def main() -> int:
     # --- text contrast, if the block boxes were dumped ----------------------
     if a.blocks and os.path.exists(a.blocks):
         blocks = json.load(open(a.blocks))
+        # WCAG 2.1 SC 1.4.3 sets two floors, not one: 4.5:1 for body text and
+        # 3:1 for large-scale text, which it defines as 18 pt or 14 pt bold. A
+        # single 4.5 floor was holding a 36.5 pt title to the body-text
+        # standard. The size compared is the design size, since the output
+        # resolution does not change whether a title is display type.
+        def floor_for(b):
+            size = float(b.get("size", 0.0))
+            weight = str(b.get("weight", "normal"))
+            bold = weight in ("bold", "semibold", "600", "700", "800", "900")
+            return 3.0 if (size >= 18.0 or (bold and size >= 14.0)) else 4.5
+
         print("\ntext contrast (WCAG, against the median luminance behind each block)")
+        print("  floor is 4.5, or 3.0 for large-scale text (18 pt, or 14 pt bold)")
         worst = []
         for b in blocks:
             x0, y0, x1, y1 = (int(b["x0"]), int(b["y0"]), int(b["x1"]), int(b["y1"]))
@@ -191,12 +203,12 @@ def main() -> int:
             bg = float(np.median(rel_lum(patch).ravel()))
             fg = float(rel_lum(np.array(b["rgb"])))
             cr = ratio(fg, bg)
-            worst.append((cr, b["role"]))
-        for cr, role in sorted(worst)[:8]:
-            flag = "  FAILS AA" if cr < 4.5 else ""
+            worst.append((cr, b["role"], floor_for(b)))
+        for cr, role, fl in sorted(worst, key=lambda t: t[0] / t[2])[:8]:
+            flag = f"  FAILS AA (floor {fl:g})" if cr < fl else ""
             print(f"  {cr:6.2f}  {role}{flag}")
-        n_fail = sum(1 for cr, _ in worst if cr < 4.5)
-        print(f"  -> {len(worst)} blocks, {n_fail} below the 4.5 AA floor")
+        n_fail = sum(1 for cr, _, fl in worst if cr < fl)
+        print(f"  -> {len(worst)} blocks, {n_fail} below their AA floor")
 
     # --- subject extent, if the annotations are available -------------------
     if a.anno and os.path.exists(a.anno):
