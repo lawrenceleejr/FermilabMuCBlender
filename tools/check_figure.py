@@ -121,7 +121,14 @@ def main() -> int:
 
     if a.base and os.path.exists(a.base):
         base = np.asarray(Image.open(a.base).convert("L").resize((w, h))).astype(float)
-        d = L - base
+        # Only the darkening. A scrim or a vignette can subtract light and never
+        # add it, so clipping the positive side throws away exactly the things
+        # that are not being looked for -- type and leaders -- and keeps exactly
+        # what is. Without it a single leader running across more than half the
+        # frame beat the row median (rows 708-712 read -25, +107, -9) and was
+        # reported as a 16 L seam, which is the same trap the 36 pt title set
+        # for the row scan and the reason it stays below the title block.
+        d = np.minimum(L - base, 0.0)
         # Median along each line, not mean: type occupies a small fraction of
         # any row or column, so the median mostly ignores it while still
         # tracking the overlay's level. A mean kept measuring whichever text

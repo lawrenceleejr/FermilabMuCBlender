@@ -392,6 +392,62 @@ def spaced(text: str, wide: bool = False) -> str:
 # --------------------------------------------------------------------------- #
 # helpers
 # --------------------------------------------------------------------------- #
+def vignette(ax, anno, *, strength=0.55, ramp_x=0.085, ramp_y=0.105, zorder=1):
+    """A soft darkening outside the subject, to give the type a ground.
+
+    The type sits at the edges of the frame and the subject sits in the middle,
+    which is what makes this the right instrument rather than the panels it
+    replaced: it darkens where the words are, leaves the drawing alone, and
+    because it has no edge anywhere there is nothing to read as a pasted
+    rectangle.
+
+    The shape is the subject's own bounding box -- the site outline projected
+    through the render camera, which build_scene.py writes into the annotation
+    JSON -- with the falloff starting at that box's edge and ramping outward.
+    Not a circle, and not an ellipse either, both of which were tried first and
+    are geometrically unable to do the job here: the site's box reaches x 0.767
+    and the right-hand text column starts at 0.810, so there is 0.043 of frame
+    between the subject and the type. Any falloff that is a function of one
+    radius has to spend its whole ramp inside that gap or spill onto the site,
+    and an elliptical one measured -17.5 % on the site itself -- the corners of
+    a wide box sit at 1.41 radii, well into the ramp, so the site's east and
+    west ends went dark while the sky above it barely moved.
+
+    Taking the excess outside the box per axis instead makes the two
+    independent: zero everywhere inside the box, including its corners, and
+    full strength 0.085 of the width beyond its sides or 0.105 of the height
+    beyond its top and bottom. `hypot` of the two excesses rounds the corners
+    of the resulting frame, so the far corners of the image reach full darkening
+    slightly sooner than its edges do, which is what a vignette should do.
+
+    Alpha composites over the render in display space, so nothing here can lift
+    a value: the site keeps its own tone and everything outboard of it loses
+    some.
+    """
+    subj = (anno or {}).get("subject") or {}
+    box = subj.get("bbox")
+    if not box:
+        # No subject in the JSON (an older dump): fall back to a frame-centred
+        # box and say so, rather than silently vignetting the wrong thing.
+        print("[annotate] no subject bbox in the annotations; "
+              "vignette falling back to a frame-centred box")
+        cx, cy, hx, hy = 0.5, 0.5, 0.30, 0.20
+    else:
+        x0, y0, x1, y1 = box
+        cx, cy = (x0 + x1) / 2.0, 1.0 - (y0 + y1) / 2.0     # y_img -> axes
+        hx, hy = max((x1 - x0) / 2.0, 1e-3), max((y1 - y0) / 2.0, 1e-3)
+
+    n = 512
+    ex = np.clip((np.abs(np.linspace(0.0, 1.0, n)[None, :] - cx) - hx) / ramp_x, 0.0, None)
+    ey = np.clip((np.abs(np.linspace(0.0, 1.0, n)[:, None] - cy) - hy) / ramp_y, 0.0, None)
+    t = np.clip(np.sqrt(ex * ex + ey * ey), 0.0, 1.0)
+    rgba = np.zeros((n, n, 4))
+    rgba[..., 3] = strength * (t * t * (3.0 - 2.0 * t))     # smoothstep: flat at both ends
+    ax.imshow(rgba, extent=(0, 1, 0, 1), transform=ax.transAxes, origin="lower",
+              aspect="auto", zorder=zorder, interpolation="bilinear")
+    return dict(centre=(cx, cy), half=(hx, hy), ramp=(ramp_x, ramp_y), strength=strength)
+
+
 LEADERS: list[tuple[str, tuple, tuple, tuple]] = []   # (key, anchor, knee, end) in axes coords
 # The diagonal angle every dog-leg in the figure shares, in degrees measured
 # off the horizontal in *pixel* space, so it looks like one angle on screen
@@ -596,7 +652,7 @@ def draw_title(ax, F, s, width, height, copy=None):
     """
     copy = copy or TITLE
     x = MARGIN
-    text(ax, x, 0.950, copy["title"], F["sans"], TYPE["title"], INK, s, va="top",
+    text(ax, x, 0.955, copy["title"], F["sans"], TYPE["title"], INK, s, va="top",
          role="title")
     # a measured tick, not an orphaned underline: the old 99 px rule under a
     # 560 px title read as neither. Neutral, so the title block does not enrol
@@ -605,7 +661,7 @@ def draw_title(ax, F, s, width, height, copy=None):
     # 0.062 between the rule and the deck -- the rule read as belonging to the
     # title with the deck adrift below it. Closed from both sides: the rule
     # drops to 0.852 and the deck rises to 0.824.
-    ax.plot([x, x + 0.150], [0.852, 0.852], transform=ax.transAxes, color=INK,
+    ax.plot([x, x + 0.150], [0.880, 0.880], transform=ax.transAxes, color=INK,
             lw=1.6 * s, alpha=0.35, solid_capstyle="butt", zorder=8)
     # 1.32 only here, and the parameter defaults to None everywhere else for a
     # reason worth recording: passing linespacing *at all* switches matplotlib
@@ -613,16 +669,19 @@ def draw_title(ax, F, s, width, height, copy=None):
     # 10.50 for the same string -- so setting even 1.20, matplotlib's own
     # figure, grew all 46 blocks by 2 px and broke three deliberate name/metric
     # pairs into reported collisions.
-    # 0.824, not 0.852. With the panels gone the deck's ground is whatever the
-    # render puts behind it, and at 0.852 that was the brightest band of the
-    # twilight sky: light type on light sky. No ink and no halo can fix that --
-    # reaching even the large-text floor against a ground that bright is not
-    # possible with a light ink -- so the block sits low enough to clear the
-    # horizon glow. Measured on the current render: 2.26 at 0.860, 2.44 at
-    # 0.848, 3.83 at 0.836, comfortable from 0.824 down. Further down and the
-    # ladder starts to overrun.
-    t = text(ax, x, 0.824, copy["deck"], F["sans"], TYPE["deck"], "#D8D3C9", s, va="top",
-             role="deck", linespacing=1.32)
+    # The whole block sits against the sky, which it could not do before the
+    # vignette. Light type on the bare twilight sky measured WCAG 2.26 to 2.44
+    # up here; with the vignette darkening everything outside the site's own
+    # box the title reads 9.81 and the deck 10.33, so the constraint that used
+    # to hold the deck down at 0.824 is gone.
+    #
+    # What binds now is geometry, not contrast. The horizon is at y 0.793 and
+    # the frame's top margin is 0.958, which leaves 0.165 for a 0.062 title
+    # box, a rule and a 0.078 deck box -- so the two gaps are 0.013 each and
+    # the deck's linespacing comes down from 1.32 to 1.24. Everything above
+    # 0.789.
+    t = text(ax, x, 0.867, copy["deck"], F["sans"], TYPE["deck"], "#D8D3C9", s, va="top",
+             role="deck", linespacing=1.24)
     # Return where the block actually ends, rather than leaving the ladder to
     # trust a typed constant. TITLE_FLOOR was 0.800 and the deck's measured
     # bottom is 0.769: the moment the deck took a second line the constant was
@@ -1162,6 +1221,11 @@ def build(args) -> int:
             ax.axvline(gx, color="#FF3B3055", lw=0.6 * s, zorder=4)
             ax.axhline(gx, color="#FF3B3055", lw=0.6 * s, zorder=4)
     else:
+        vg = vignette(ax, anno)
+        print(f"[annotate] vignette outside the subject box: centre "
+              f"({vg['centre'][0]:.3f}, {vg['centre'][1]:.3f}), half-extent "
+              f"({vg['half'][0]:.3f}, {vg['half'][1]:.3f}), ramp "
+              f"({vg['ramp'][0]:.3f}, {vg['ramp'][1]:.3f}), strength {vg['strength']:.2f}")
         title_floor, title_right = draw_title(ax, F, s, width, height, copy=dict(
             title=args.title or TITLE["title"],
             deck=(args.deck.replace("\\n", "\n") if args.deck else TITLE["deck"]),
