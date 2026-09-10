@@ -29,6 +29,7 @@ matplotlib.use("Agg")
 
 import matplotlib.font_manager as fm  # noqa: E402
 import numpy as np  # noqa: E402
+from matplotlib import colors as mcolors  # noqa: E402
 from matplotlib import patheffects  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
 from PIL import Image  # noqa: E402
@@ -43,7 +44,13 @@ FONT_DIR = os.path.join(ROOT, "assets", "fonts")
 # figure still reads in greyscale or to a colour-blind viewer; colour only
 # confirms which of the three a label names.
 INK = "#F2F0EB"
-INK_DIM = "#9AA3AF"
+# Raised from #9AA3AF, which measured a WCAG ratio of 3.95 against the ground
+# actually behind it -- the three blocks set in it (the ribbon caption, the
+# ribbon arrows, the scale-bar note) were the least legible type in the figure,
+# and darkening the ground under them any further would have cost more picture
+# than the reading was worth. At 0.50 relative luminance it stays a clear step
+# below METRIC_INK, so the rank the dim grey was chosen to carry survives.
+INK_DIM = "#B4BCC6"
 # Leaders stay one neutral grey -- apparatus, not data, so they never compete
 # with the accelerator geometry for hue. But at 0.6 px and 55 % alpha they had
 # gone too far the other way and were barely findable, so the weight and
@@ -238,7 +245,12 @@ TITLE = dict(
     # No area figure here: the boundary callout carries the measured 27.7 km2,
     # and a rounded 27 in the deck against a measured 28 in the margin is
     # exactly the kind of internal disagreement a reader can catch.
-    deck="The whole accelerator chain sized to fit the existing campus, "
+    # Two lines, broken at the comma. As one line this ran 100 characters --
+    # well past the 45-75 measure that is comfortable to read, and 0.70 of the
+    # frame width, which put its tail outside the title scrim and left the
+    # sentence carrying the figure's claim at a WCAG ratio of 2.9 against the
+    # sky behind it. The longest line is now 61 characters.
+    deck="The whole accelerator chain sized to fit the existing campus,\n"
          "its final synchrotron a 14.5 km ring.",
 )
 
@@ -338,7 +350,8 @@ def spaced(text: str, wide: bool = False) -> str:
 # --------------------------------------------------------------------------- #
 # helpers
 # --------------------------------------------------------------------------- #
-def scrim(ax, x0, y0, x1, y1, *, strength=0.62, direction="left", feather=0.40, zorder=2):
+def scrim(ax, x0, y0, x1, y1, *, strength=0.62, direction="left", feather=0.40,
+          feather_x=None, feather_y=None, zorder=2):
     """A soft directional gradient behind a text block.
 
     Type over a photographic background needs separation. A gradient scrim keeps
@@ -355,8 +368,14 @@ def scrim(ax, x0, y0, x1, y1, *, strength=0.62, direction="left", feather=0.40, 
     across 66 % of the frame width, plainly visible as a pasted rectangle. Every
     edge that is not a frame edge is now feathered, on both axes, so alpha
     reaches zero before the scrim ends. `feather` is the fraction of the extent
-    given over to each fade.
+    given over to each fade. A band that is long on one axis and short on the
+    other needs a different fraction on each -- one figure that softens a 60 px
+    vertical fade leaves a horizontal one either too abrupt or so long it never
+    reaches full strength under the type -- so `feather_x` and `feather_y`
+    override it per axis.
     """
+    fx = feather if feather_x is None else feather_x
+    fy = feather if feather_y is None else feather_y
     n = 256
     ramp = np.linspace(0.0, 1.0, n)          # imshow origin="lower": row 0 is the bottom
     if direction == "flat":                  # even, relying entirely on the feather
@@ -372,19 +391,20 @@ def scrim(ax, x0, y0, x1, y1, *, strength=0.62, direction="left", feather=0.40, 
     else:
         raise ValueError(f"scrim direction must be left/right/up/down, got {direction!r}")
 
-    def profile(lo_at_frame, hi_at_frame):
+    def profile(lo_at_frame, hi_at_frame, f):
         """1 in the middle, fading to 0 at whichever ends sit inside the frame."""
         p = np.ones(n)
+        if f <= 0:
+            return p
         if not lo_at_frame:
-            p *= np.clip(ramp / feather, 0.0, 1.0)
+            p *= np.clip(ramp / f, 0.0, 1.0)
         if not hi_at_frame:
-            p *= np.clip((1.0 - ramp) / feather, 0.0, 1.0)
+            p *= np.clip((1.0 - ramp) / f, 0.0, 1.0)
         return p
 
     eps = 1e-6
-    if feather > 0:
-        a = a * profile(y0 <= eps, y1 >= 1.0 - eps)[:, None]
-        a = a * profile(x0 <= eps, x1 >= 1.0 - eps)[None, :]
+    a = a * profile(y0 <= eps, y1 >= 1.0 - eps, fy)[:, None]
+    a = a * profile(x0 <= eps, x1 >= 1.0 - eps, fx)[None, :]
 
     rgba = np.zeros((n, n, 4))
     rgba[..., 3] = a * strength
@@ -393,6 +413,12 @@ def scrim(ax, x0, y0, x1, y1, *, strength=0.62, direction="left", feather=0.40, 
 
 
 LEADERS: list[tuple[str, tuple, tuple, tuple]] = []   # (key, anchor, knee, end) in axes coords
+# Measured extent and colour of every block drawn, in pixels, for
+# check_figure.py --blocks. The layout checker here can only see the layout; it
+# cannot know what the render puts *behind* a label, so the WCAG reading has to
+# be taken on pixels by the other tool. It documented a --blocks input from the
+# start and nothing ever wrote the file, so that reading had never been taken.
+BLOCKS: list[dict] = []
 
 
 def leader(ax, ax_x, ax_y, lx, ly, colour, s, width, height, *, ha="left", key="",
@@ -498,7 +524,7 @@ def measure(t, width) -> float:
 
 
 def text(ax, x, y, body, fp, size, colour, s, *, ha="left", va="center", zorder=8,
-         shadow=True, alpha=1.0, role="text", group=None):
+         shadow=True, alpha=1.0, role="text", group=None, linespacing=None):
     """One text block, with a halo proportional to the type it protects.
 
     The halo used to be a fixed 2.2 px at every size, which is 8.5 % of the em
@@ -508,7 +534,8 @@ def text(ax, x, y, body, fp, size, colour, s, *, ha="left", va="center", zorder=
     three accidental ones.
     """
     t = ax.text(x, y, body, transform=ax.transAxes, ha=ha, va=va,
-                fontproperties=fp, fontsize=size * s, color=colour, zorder=zorder, alpha=alpha)
+                fontproperties=fp, fontsize=size * s, color=colour, zorder=zorder,
+                alpha=alpha, linespacing=linespacing)
     # `group` marks blocks that are meant to sit close -- the lines of one
     # paragraph, a name and its metric -- so the checker does not read
     # deliberate leading as a collision. Everything else needs full clearance.
@@ -551,7 +578,14 @@ def draw_title(ax, F, s, copy=None):
     # present (4753 star pixels, mean luminance 43) and visually gone. It now
     # holds full strength over the title and deck and fades out just above the
     # horizon.
-    scrim(ax, 0.0, 0.70, 0.70, 1.0, strength=0.56, direction="left")
+    # Flat, not a left-to-right ramp. The ramp was at 0.20 of full strength by
+    # the middle of the deck and nothing at all past x 0.70, so the ground got
+    # weaker exactly as the line got longer. Flat with a feathered right edge
+    # holds one level under both lines and still leaves the right 30 % of the
+    # sky -- the densest part of the star field -- untouched, which is what the
+    # ramp was there for.
+    scrim(ax, 0.0, 0.70, 0.70, 1.0, strength=0.44, direction="flat",
+          feather_y=0.42, feather_x=0.17)
     x = MARGIN
     text(ax, x, 0.950, copy["title"], F["sans"], TYPE["title"], INK, s, va="top",
          shadow=False, role="title")
@@ -560,8 +594,14 @@ def draw_title(ax, F, s, copy=None):
     # itself in the categorical colour scale.
     ax.plot([x, x + 0.150], [0.874, 0.874], transform=ax.transAxes, color=INK,
             lw=1.6 * s, alpha=0.35, solid_capstyle="butt", zorder=8)
+    # 1.32 only here, and the parameter defaults to None everywhere else for a
+    # reason worth recording: passing linespacing *at all* switches matplotlib
+    # from measured glyph extents to the nominal line box -- 12.50 px against
+    # 10.50 for the same string -- so setting even 1.20, matplotlib's own
+    # figure, grew all 46 blocks by 2 px and broke three deliberate name/metric
+    # pairs into reported collisions.
     text(ax, x, 0.852, copy["deck"], F["sans"], TYPE["deck"], "#D8D3C9", s, va="top",
-         shadow=False, role="deck")
+         shadow=False, role="deck", linespacing=1.32)
 
 
 def draw_ribbon(ax, F, s, width):
@@ -573,6 +613,20 @@ def draw_ribbon(ax, F, s, width):
     enters. One line of type does what twelve leaders could not.
     """
     y = LEGEND_BAND[1] - 0.010
+    # The ribbon is the one full-width element over the picture, and the
+    # brightest thing in the render -- the town's road lighting -- runs straight
+    # under its left end. Measured, "Beam sequence" sat at a WCAG ratio of 3.2
+    # there while the same line read 6.0 over dark ground further right. The
+    # column scrims stop at x 0.255, so the ribbon gets a band of its own,
+    # spanning the full width because the element does: a band ending inside
+    # the frame would put an edge in the middle of the line it is grounding.
+    # 0.46, set from the worst block rather than by eye: at 0.36 one sequence
+    # digit still measured 3.95 against a single street light under it, and
+    # that reading only appears at full resolution -- at 800 px the same digit
+    # is 3 px wide and the light averages away, so a low-resolution check
+    # passes a figure the printed one fails.
+    scrim(ax, 0.0, y - 0.085, 1.0, y + 0.085, strength=0.46, direction="flat",
+          feather_y=0.38)
     x = MARGIN
     gap, tight = 0.020, 0.006
     t = text(ax, x, y, "Beam sequence", F["sans_semi"], TYPE["credit"], INK_DIM, s,
@@ -908,6 +962,9 @@ def check_collisions(fig, ax, width, height, *, s=1.0, pad_px=6.0):
     for role, grp, t in DRAWN:
         bb = t.get_window_extent(renderer)
         boxes.append((role, bb.x0, bb.y0, bb.x1, bb.y1, grp))
+        BLOCKS.append({"role": role, "group": grp,
+                       "x0": bb.x0, "y0": bb.y0, "x1": bb.x1, "y1": bb.y1,
+                       "rgb": [round(255.0 * c) for c in mcolors.to_rgb(t.get_color())]})
 
     def overlap(a, b, pad):
         return not (a[3] + pad <= b[1] or b[3] + pad <= a[1]
@@ -1063,6 +1120,12 @@ def build(args) -> int:
         return 1
 
     stem = args.out or os.path.splitext(args.image)[0] + ("_debug" if args.debug else "_annotated")
+    if args.dump_blocks:
+        # check_collisions measures the boxes, so this is written after it runs
+        # rather than measuring everything twice.
+        with open(args.dump_blocks, "w") as fh:
+            json.dump(BLOCKS, fh, indent=1)
+        print(f"[annotate] wrote {args.dump_blocks}: {len(BLOCKS)} block boxes")
     written = []
     for ext in (args.formats.split(",") if args.formats else ["png"]):
         ext = ext.strip().lower()
@@ -1085,6 +1148,8 @@ def main() -> int:
     p.add_argument("--strict", action="store_true", help="fail rather than write a figure with text collisions")
     p.add_argument("--title", default="", help="override the title line")
     p.add_argument("--deck", default="", help="override the standfirst; \\n splits lines")
+    p.add_argument("--dump-blocks", default="", metavar="JSON",
+                   help="write each block's measured box and colour for check_figure.py --blocks")
     return build(p.parse_args())
 
 
