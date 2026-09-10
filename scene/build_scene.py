@@ -230,6 +230,26 @@ def dump_annotations(path, scene, cam, width, height, sky_meta):
             "on_screen": bool(0.0 <= px <= 1.0 and 0.0 <= py <= 1.0 and depth > 0),
         }
 
+    # --- the subject's own extent on screen -------------------------------------
+    # The features above are single anchor points, which is enough to put a
+    # label on a thing and not enough to know where the thing *is*. The
+    # annotation layer needs the latter as well: a vignette that darkens the
+    # frame for the type's sake has to know what it must not darken, and the
+    # site outline is wider than the anchors that point into it.
+    bpts = []
+    for x, y in site.CAMPUS_BOUNDARY:
+        px, py, depth = project((x, y, site.geo.elev(x, y)))
+        if depth > 0:
+            bpts.append([px, py])
+    if bpts:
+        xs = [q[0] for q in bpts]
+        ys = [q[1] for q in bpts]
+        out["subject"] = {
+            "boundary": bpts,
+            "bbox": [min(xs), min(ys), max(xs), max(ys)],
+            "centre": [(min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0],
+        }
+
     # --- scale: pixels per metre on the ground at the site centroid --------------
     # A perspective view has no single scale, so the scale bar is quoted at the
     # centroid and labelled as such.

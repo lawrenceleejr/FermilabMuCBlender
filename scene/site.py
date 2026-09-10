@@ -90,7 +90,22 @@ MC_IP_ANGLES = (120.0, 300.0)                # detector halls, diametrically opp
 # shares its grade: existing buildings. The cooling channel passes within 17 m
 # of the collider line, which is a crossing, at different depths, like the
 # others the figure already carries.
-LINAC = ((1389.0, -26.0), (1007.0, -514.0))
+# The linac meets the accumulator ring *tangentially*, which is how a beam is
+# injected into a ring and is not what this was: it ran straight at the ring's
+# centre and stopped on its perimeter, 143.22 m from the centre against a
+# radius of 143.24. Radial, in other words -- the one direction an injection
+# line cannot take.
+#
+# Made tangent by rotating the line 10.82 deg about its own start rather than
+# by offsetting it. The offset is the obvious construction and it costs too
+# much: sliding the line 143 m sideways to graze the ring takes its clearance
+# from the 294 mapped on-site buildings from 113 m down to 31 m, and building
+# clearance is what the chain's axis was solved for in the first place.
+# Rotating about the start holds that 113 m exactly -- the binding building is
+# near the start, which the rotation does not move -- and improves the gap to
+# the buncher ring from 182 m to 204 m. Both rotation senses are equally clear;
+# this one keeps the line nearest where it already was.
+LINAC = ((1389.0, -26.0), (1046.4, -692.5))
 PD_ACCUM_C = (919.0, -627.0)
 PD_BUNCH_C = (773.0, -815.0)
 TARGET_XY = (675.0, -940.0)
