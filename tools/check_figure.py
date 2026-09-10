@@ -106,20 +106,45 @@ def main() -> int:
         base = np.asarray(Image.open(a.base).convert("L").resize((w, h))).astype(float)
         d = L - base
         # Median along each line, not mean: type occupies a small fraction of
-        # any row or column, so the median ignores it while still tracking the
-        # overlay's level. A mean kept measuring whichever text block happened
-        # to fall in the window.
-        r0, r1 = int(h * 0.03), int(h * 0.97)
-        rows = np.median(d[r0:r1, :], axis=1)
+        # any row or column, so the median mostly ignores it while still
+        # tracking the overlay's level. A mean kept measuring whichever text
+        # block fell in the window.
+        #
+        # Two residual traps, both of which produced a confident wrong answer.
+        # The median is *not* robust to a block wider than half the frame, and
+        # the 36 pt title is: its rows read as a 7 L step. So the row scan stays
+        # below the title block. And on 8-bit medians the profile jitters by a
+        # unit or two, which a raw window comparison reports as a 6 L step in a
+        # perfectly smooth ramp -- so the profile is smoothed first.
+        def smooth(v, k=9):
+            if len(v) < k:
+                return v
+            return np.convolve(v, np.ones(k) / k, mode="valid")
+
+        # The scan covers the picture region only: below the title block and
+        # above the legend band. Both of those are dense with type, and type
+        # wider than half the frame defeats a median.
+        r0, r1 = int(h * 0.24), int(h * 0.76)
+        rows = smooth(np.median(d[r0:r1, :], axis=1))
         c0, c1 = int(w * 0.03), int(w * 0.97)
-        cols = np.median(d[:, c0:c1], axis=0)
+        cols = smooth(np.median(d[r0:r1, c0:c1], axis=0))
+        r0 += 4                                     # the valid-mode convolution offset
+        c0 += 4
         r_step, r_at = worst_step(rows, r0)
         c_step, c_at = worst_step(cols, c0)
         print("\nscrim edges (sustained step in annotated minus base, clear of type)")
         print(f"  row shift  {r_step:5.2f} L at row {r_at} ({r_at / h:.2f} of height)")
         print(f"  col shift  {c_step:5.2f} L at col {c_at} ({c_at / w:.2f} of width)")
+        # Threshold set from this tool's own measured noise floor, not chosen to
+        # make the current figure pass. In a window holding both callout type
+        # and a gradient the reading sits at 5-6 L: the median is only partly
+        # robust to type, 8-bit profiles jitter by a unit or two, and where a
+        # feathered ramp meets its plateau there is a real slope kink (which is
+        # continuous in level, so not a seam). The hard-edged scrim this
+        # replaced measured 13-19 L on the same test, so 8 L discriminates the
+        # defect from the floor with room either side.
         seams = [(n, v, at) for n, v, at in
-                 (("row", r_step, r_at), ("col", c_step, c_at)) if v > 6.0]
+                 (("row", r_step, r_at), ("col", c_step, c_at)) if v > 8.0]
         for label, v, at in seams:
             print(f"  -> VISIBLE {label} seam at {at}: the overlay changes level by "
                   f"{v:.0f} L across a few pixels, which reads as a pasted rectangle")
@@ -156,7 +181,9 @@ def main() -> int:
         xs = [v["x"] for v in f.values() if v.get("on_screen")]
         ys = [v["y"] for v in f.values() if v.get("on_screen")]
         if xs:
-            print(f"\nsubject extent (from the projected anchors)")
+            # the spread of the *labelled* anchors, which is narrower than the
+            # site: the boundary contributes one point, not its whole outline
+            print(f"\nlabelled-anchor spread (not the site's extent)")
             print(f"  x {min(xs):.3f}..{max(xs):.3f} = {(max(xs) - min(xs)) * 100:.0f}% of width")
             print(f"  y {min(ys):.3f}..{max(ys):.3f} = {(max(ys) - min(ys)) * 100:.0f}% of height")
         sc = anno.get("scale", {})
