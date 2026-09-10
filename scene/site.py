@@ -813,7 +813,7 @@ def build_village(col):
 
 
 def build_street_lights(col, *, near=1800.0, mid=16000.0, far=80500.0,
-                        mid_cap=6000, far_cap=14000):
+                        mid_cap=6000, far_cap=19000):
     """Lights on the roads that exist, out to 50 miles, in three registers.
 
     The registers exist because a street lamp cannot be drawn at every scale in
@@ -907,15 +907,42 @@ def build_street_lights(col, *, near=1800.0, mid=16000.0, far=80500.0,
                         continue
                     mid_pts.append((x, y))
 
-    # 50-mile register, on the tiled trunk network
+    # 50-mile register, on the tiled trunk network.
+    #
+    # The crossover from the mid register to this one used to be a circle at
+    # `mid`, 16 km. The mid register's data is not a circle: major_roads is one
+    # Overpass query over a lat/lon box, so its coverage stops at a *square*
+    # 11.9 km east-west and 10.9 km north-south. Everything between that square
+    # and the 16 km circle therefore had no lights from either register -- a
+    # dark annulus 4.4 km deep due north, 6.7 km due south and nothing at the
+    # corners, with the roads visibly stopping and starting again beyond it.
+    # Simulating the placement over the baked data: 78 lamp candidates in the
+    # 8-10 km bin due north, then 5, 0, 0, 0, 0, 1, and 13 again past 16 km.
+    #
+    # So the crossover follows the box. Measured from the baked points rather
+    # than copied from the fetcher's constants, so it stays correct if the
+    # fetch box changes; the two registers are complementary either way, since
+    # major_roads has nothing outside its own box.
+    maj = [(p[0], p[1]) for w in geo.ways("major_roads", min_pts=2) for p in w["pts"]]
+    mid_bx = max((abs(x) for x, _ in maj), default=mid)
+    mid_by = max((abs(y) for _, y in maj), default=mid)
+    print(f"[site] mid/far crossover at the major_roads box: "
+          f"{mid_bx / 1000:.1f} x {mid_by / 1000:.1f} km")
     for w in geo.ways("wide_roads", min_pts=2, radius=far + 2000.0):
         pts = [(p[0], p[1]) for p in w["pts"]]
         for x, y in _resample(pts, 260.0):
             d = math.hypot(x, y)
-            if d <= mid or d > far:
+            if (abs(x) <= mid_bx and abs(y) <= mid_by) or d > far:
                 continue
             # spacing grows with distance: keep roughly one point per unit of
             # projected length rather than per unit of ground length
+            # `mid`, not the crossover distance: this term sets how density
+            # falls with distance and is calibrated against the 16 km scale.
+            # Feeding it the new 10.9 km crossover thinned every ring beyond
+            # 16 km by about 30 % -- 764 points in the 16-18 km ring became
+            # 539 -- which would have paid for the filled annulus by taking
+            # light out of the whole distance. Inside the crossover the
+            # probability saturates at 1.0 either way.
             if rng.random() > min(1.0, (mid / d) ** 0.9):
                 continue
             far_pts.append((x, y))
