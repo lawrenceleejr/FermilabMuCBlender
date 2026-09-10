@@ -73,18 +73,18 @@ LAYOUTS = {
     # Ordered down each column to match the order of the anchors' heights, which
     # is what keeps the dog-legs from crossing one another.
     "overview": {
-        # left column
+        # left column, ordered to match the anchors' heights so the legs do not cross
         "detector_b":    dict(lx=0.145, ly=0.600, ha="right"),
         "main_injector": dict(lx=0.145, ly=0.490, ha="right"),
         "rcs":           dict(lx=0.145, ly=0.380, ha="right"),
         "collider":      dict(lx=0.145, ly=0.270, ha="right"),
-        "boundary":      dict(lx=0.145, ly=0.163, ha="right"),
+        "boundary":      dict(lx=0.145, ly=0.160, ha="right"),
         # right column
-        "proton_driver": dict(lx=0.855, ly=0.600, ha="left"),
-        "cooling":       dict(lx=0.855, ly=0.490, ha="left"),
-        "wilson":        dict(lx=0.855, ly=0.380, ha="left"),
-        "detector_a":    dict(lx=0.855, ly=0.270, ha="left"),
-        "tevatron":      dict(lx=0.855, ly=0.163, ha="left"),
+        "proton_driver": dict(lx=0.855, ly=0.620, ha="left"),
+        "cooling":       dict(lx=0.855, ly=0.505, ha="left"),
+        "wilson":        dict(lx=0.855, ly=0.390, ha="left"),
+        "detector_a":    dict(lx=0.855, ly=0.275, ha="left"),
+        "tevatron":      dict(lx=0.855, ly=0.160, ha="left"),
     },
     "northeast": {
         "wilson":        dict(lx=0.820, ly=0.660, ha="left"),
@@ -266,51 +266,50 @@ def draw_footer(ax, F, s, anno):
 
 
 def draw_scale_and_north(ax, F, s, anno, width, height):
-    """Scale bar and north needle, both from the camera's own projection.
+    """Graphic scale and north needle, both from the camera's own projection.
 
-    A perspective view has no single scale, so the bar is measured on the ground
-    at the site centre and labelled as such -- an unqualified bar would be a
-    quiet lie, since the same 2 km is shorter at the far boundary than the near.
+    The bar's length is the true projected length of 2 km on the ground at the
+    site centre, but it is drawn horizontally: in a legend the length is the
+    information and the bearing is not, whereas a tilted bar in a flat footer
+    band just reads as a mistake. A perspective view has no single scale, so
+    the caption says where this one was measured -- an unqualified bar would be
+    a quiet lie, since the same 2 km is shorter at the far boundary.
+
+    The needle does carry a bearing, so it keeps the true projected one. Here it
+    points down and to the right because the camera looks south-south-west, so
+    a ground vector pointing north comes toward the viewer.
     """
     sc = anno.get("scale", {})
     px_per_km = sc.get("px_per_km_at_reference", 0.0)
     if px_per_km <= 0:
         return
     km = 2.0
-    ex, ey = axes_dir(sc.get("east_px_per_km", [px_per_km, 0.0]), width, height)
-    # The bar measures 2 km along the ground's east-west line; which end is east
-    # does not matter, so always draw it left-to-right, the way a bar is read.
-    if ex < 0:
-        ex, ey = -ex, -ey
-    x0, y0 = 0.575, 0.168
-    dx, dy = ex * km, ey * km
+    length = km * px_per_km / width
+    x0, y = 0.695, 0.058
 
-    ax.plot([x0, x0 + dx], [y0, y0 + dy], transform=ax.transAxes, color=INK, lw=1.9 * s,
-            solid_capstyle="butt", zorder=8, path_effects=[patheffects.withStroke(linewidth=3.6 * s, foreground="#05070Baa")])
-    # ticks perpendicular to the bar, at 0, 1 and 2 km
-    nx, ny = -dy, dx
-    n_len = (nx ** 2 + ny ** 2) ** 0.5
-    nx, ny = nx / n_len * 0.011, ny / n_len * 0.011
+    ax.plot([x0, x0 + length], [y, y], transform=ax.transAxes, color=INK, lw=1.9 * s,
+            solid_capstyle="butt", zorder=8)
     for f in (0.0, 0.5, 1.0):
-        tx, ty = x0 + dx * f, y0 + dy * f
-        ax.plot([tx, tx + nx], [ty, ty + ny], transform=ax.transAxes, color=INK, lw=1.5 * s, zorder=8)
-        text(ax, tx + nx * 2.0, ty + ny * 2.0, f"{km * f:.0f}", F["sans"], TYPE["meta"], INK, s,
-             ha="center", va="center")
-    mid_x, mid_y = x0 + dx * 0.5, y0 + dy * 0.5
-    text(ax, mid_x - nx * 2.4, mid_y - ny * 2.4, "km at site centre", F["sans"], TYPE["metric"],
-         INK_DIM, s, ha="center", va="center", alpha=0.9)
+        tx = x0 + length * f
+        ax.plot([tx, tx], [y, y + 0.016], transform=ax.transAxes, color=INK, lw=1.5 * s, zorder=8)
+        text(ax, tx, y + 0.034, f"{km * f:.0f}", F["sans"], TYPE["meta"], INK, s,
+             ha="center", va="center", shadow=False)
+    text(ax, x0 + length + 0.012, y + 0.034, "km", F["sans"], TYPE["meta"], INK, s,
+         ha="left", va="center", shadow=False)
+    text(ax, x0, y - 0.026, "at site centre", F["sans"], TYPE["metric"], INK_DIM, s,
+         ha="left", va="center", shadow=False)
 
-    # --- north needle -------------------------------------------------------------
+    # --- north needle, on the true projected bearing --------------------------
     nnx, nny = axes_dir(anno.get("north", {}).get("north_px_per_km", [0.0, -px_per_km]), width, height)
     ln = (nnx ** 2 + nny ** 2) ** 0.5 or 1.0
-    ux, uy = nnx / ln * 0.055, nny / ln * 0.055
-    cx, cy = 0.868, 0.215
-    ax.annotate("", xy=(cx + ux * 0.6, cy + uy * 0.6), xytext=(cx - ux * 0.6, cy - uy * 0.6),
+    ux, uy = nnx / ln * 0.042, nny / ln * 0.042
+    cx, cy = 0.945, 0.065
+    ax.annotate("", xy=(cx + ux, cy + uy), xytext=(cx - ux * 0.7, cy - uy * 0.7),
                 xycoords=ax.transAxes, textcoords=ax.transAxes, zorder=8,
-                arrowprops=dict(arrowstyle="-|>", color=INK, lw=1.4 * s, mutation_scale=13 * s,
+                arrowprops=dict(arrowstyle="-|>", color=INK, lw=1.4 * s, mutation_scale=12 * s,
                                 shrinkA=0, shrinkB=0))
-    text(ax, cx + ux * 1.05, cy + uy * 1.05, "N", F["sans_semi"], TYPE["scale"], INK, s,
-         ha="center", va="center")
+    text(ax, cx + ux * 1.55, cy + uy * 1.55, "N", F["sans_semi"], TYPE["scale"], INK, s,
+         ha="center", va="center", shadow=False)
 
 
 def draw_features(ax, F, s, anno, layout_name, width, height):

@@ -28,12 +28,14 @@ PRESETS = {
     # high NE overlook: the whole site laid out to the SW -- Wilson Hall left of centre and
     # the collider ring sweeping through the middle distance. Reads as a graphic, not a portrait.
     "overlook": dict(location=(760.0, 1020.0, 330.0), target=(500.0, -520.0, 40.0), lens=28.0, fstop=2.2),
-    # --- the whole complex: 3.56 km up and 8.0 km NNE of the site centroid, looking SSW down
-    # a 24 deg depression on a 24 mm lens. High enough to read as a site plan -- the nested
-    # rings separate instead of overlapping -- while staying oblique enough to keep the
-    # buildings in relief and a sliver of twilight sky along the top edge.
-    # Deep aperture: at these distances there is nothing to throw out of focus.
-    "overview": dict(location=(3961.0, 6418.0, 3560.0), target=(1225.0, -1100.0, 0.0), lens=24.0, fstop=8.0),
+    # --- the whole complex: 4.36 km up, 6.0 km NNE of the site centroid, looking SSW down a
+    # 36 deg depression on a 24 mm lens. Chosen by projecting the campus boundary over a grid
+    # of (depression, distance, shift) and keeping the case that fills ~54 % of the frame
+    # width -- what the two label columns leave -- while holding the whole 4.5 x 5 km site
+    # clear of the title block and footer. The shift lens does the last of that framing, so
+    # the perspective stays put. Deep aperture: nothing here is close enough to defocus.
+    "overview": dict(location=(3277.0, 4538.0, 4359.0), target=(1225.0, -1100.0, 0.0), lens=24.0, fstop=8.0,
+                     shift_x=0.030, shift_y=-0.027),
 
     # --- other vantages. Note that from the SW the galactic centre is behind the camera,
     # so these see the fainter anti-centre sky.
@@ -46,7 +48,7 @@ PRESETS = {
 }
 
 
-def make_camera(name, preset, focus_obj, *, col=None, aspect=(16, 9), lens=None, fstop=None, shift_y=0.0):
+def make_camera(name, preset, focus_obj, *, col=None, aspect=(16, 9), lens=None, fstop=None, shift_x=None, shift_y=None):
     p = PRESETS[preset]
     cam = bpy.data.cameras.new(name)
     cam.sensor_width = 36.0
@@ -59,7 +61,11 @@ def make_camera(name, preset, focus_obj, *, col=None, aspect=(16, 9), lens=None,
     cam.dof.aperture_fstop = fstop or p["fstop"]
     cam.dof.aperture_blades = 9
     cam.dof.aperture_rotation = math.radians(10)
-    cam.shift_y = shift_y
+    # A shift lens repositions the frame without changing the perspective, which
+    # is how an architectural photographer fits a tall or deep subject: here it
+    # lifts a 5 km-deep site clear of the footer band instead of tilting.
+    cam.shift_x = p.get("shift_x", 0.0) if shift_x is None else shift_x
+    cam.shift_y = p.get("shift_y", 0.0) if shift_y is None else shift_y
     obj = bpy.data.objects.new(name, cam)
     obj.location = p["location"]
     C.link_object(obj, col)
