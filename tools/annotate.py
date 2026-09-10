@@ -142,7 +142,7 @@ LAYOUTS = {
 COLUMN_SPLIT = 0.47          # anchors left of this get the left column
 
 
-def band(anchors, n, *, min_gap=0.058, floor=None, ceil=None):
+def band(anchors, n, *, min_gap=0.058, floor=None, ceil=None):   # noqa: retained for reference
     """Vertical extent for a ladder of n rungs, scaled to its own anchor field.
 
     The previous version spread the labels over a fixed 51 % of frame height
@@ -170,13 +170,50 @@ def band(anchors, n, *, min_gap=0.058, floor=None, ceil=None):
     return bot, top
 
 
-def ladder(anchors, n):
-    """n evenly spaced label baselines, top first, over the fitted band."""
-    lo, hi = band(anchors, n)
-    if n <= 1:
-        return [(lo + hi) / 2]
-    step = (hi - lo) / (n - 1)
-    return [hi - i * step for i in range(n)]
+def place_rungs(anchors, *, min_gap=0.058, floor=None, ceil=None):
+    """A rung per anchor, at the anchor's own height, pushed apart only as much
+    as the minimum gap demands.
+
+    An evenly spaced ladder is tidy and wrong. It puts rungs far from their
+    anchors, which makes leaders long, makes them traverse the text column, and
+    -- when the ladder is taller than the anchor field -- makes them cross.
+    Starting each label level with the thing it names and separating only where
+    two would collide keeps every leader as short as it can be, which is also
+    the better answer typographically: a label belongs next to its subject.
+
+    Returns the rungs in the same order as `anchors`.
+    """
+    ceil = TITLE_FLOOR - 0.030 if ceil is None else ceil
+    floor = LABEL_FLOOR if floor is None else floor
+    n = len(anchors)
+    if n == 0:
+        return []
+    span = (n - 1) * min_gap
+    if span > ceil - floor:                     # more rungs than room: spread evenly
+        step = (ceil - floor) / max(n - 1, 1)
+        order = sorted(range(n), key=lambda i: -anchors[i])
+        out = [0.0] * n
+        for r, i in enumerate(order):
+            out[i] = ceil - r * step
+        return out
+
+    order = sorted(range(n), key=lambda i: -anchors[i])      # top first
+    ys = [min(max(anchors[i], floor), ceil) for i in order]
+    # separate downward, then recover off the floor, then off the ceiling
+    for _ in range(4):
+        for k in range(1, n):
+            ys[k] = min(ys[k], ys[k - 1] - min_gap)
+        if ys[-1] < floor:
+            ys[-1] = floor
+            for k in range(n - 2, -1, -1):
+                ys[k] = max(ys[k], ys[k + 1] + min_gap)
+        if ys[0] > ceil:
+            shift = ys[0] - ceil
+            ys = [y - shift for y in ys]
+    out = [0.0] * n
+    for k, i in enumerate(order):
+        out[i] = ys[k]
+    return out
 
 
 TITLE = dict(
@@ -184,8 +221,11 @@ TITLE = dict(
     # The standfirst has to state what the geometry supports, and the geometry
     # changed: sizing the final synchrotron to the site rather than to the
     # IMCC's 35 km reference puts the whole chain inside the boundary.
-    deck="The whole accelerator chain, sized to the existing 27 km\u00b2 campus \u2014 "
-         "its final synchrotron a 14.5 km ring that fits.",
+    # No area figure here: the boundary callout carries the measured 27.7 km2,
+    # and a rounded 27 in the deck against a measured 28 in the margin is
+    # exactly the kind of internal disagreement a reader can catch.
+    deck="The whole accelerator chain sized to fit the existing campus, "
+         "its final synchrotron a 14.5 km ring.",
 )
 
 # The footer carries only what the image cannot say for itself: where the
@@ -321,7 +361,7 @@ LEADERS: list[tuple[str, tuple, tuple, tuple]] = []   # (key, anchor, knee, end)
 
 
 def leader(ax, ax_x, ax_y, lx, ly, colour, s, width, height, *, ha="left", key="",
-           dashed=False, zorder=6):
+           dashed=False, text_edge=None, zorder=6):
     """Dog-leg leader: a diagonal off the anchor into a common knee gutter,
     then a short horizontal run that underlines the text block.
 
@@ -340,14 +380,30 @@ def leader(ax, ax_x, ax_y, lx, ly, colour, s, width, height, *, ha="left", key="
     """
     towards = 1.0 if ha == "left" else -1.0     # which way the label lies
     knee_x = lx - towards * GUTTER
-    # if the anchor is already past the gutter, there is no diagonal to draw
-    if (towards > 0 and ax_x > knee_x) or (towards < 0 and ax_x < knee_x):
-        knee_x = ax_x
-    ax.plot([ax_x, knee_x, lx], [ax_y, ly, ly], transform=ax.transAxes, color=LEADER,
-            alpha=0.55, lw=0.6 * s, solid_capstyle="round", solid_joinstyle="miter",
-            dashes=(4, 3) if dashed else (None, None), zorder=zorder,
-            path_effects=[patheffects.withStroke(linewidth=1.8 * s, foreground="#05070B66")])
-    LEADERS.append((key, (ax_x, ax_y), (knee_x, ly), (lx, ly)))
+    text_edge = lx if text_edge is None else text_edge
+    # An anchor *inboard* of its own column -- further from frame centre than
+    # the gutter -- is the case that breaks a plain elbow: the horizontal run
+    # then travels back across the label and strikes straight through its own
+    # metric line. Two anchors in this view do that. Such a leader is routed
+    # below the text block instead, where the run reads as an underline binding
+    # the pair rather than a rule through it.
+    # An anchor that lies behind its own label block cannot be reached by any
+    # elbow without crossing the type: two anchors in this view sit at x 0.18
+    # while the left column's text runs out to 0.206. Routing the run under the
+    # block fixed the self-intersection and left the vertical leg still inside
+    # the text column. So no line is drawn at all -- the label is already
+    # beside its subject, and once a callout is adjacent a connector is
+    # redundant. The survey mark alone carries the association, which is what
+    # direct labelling means.
+    behind = (towards < 0 and ax_x < text_edge) or (towards > 0 and ax_x > text_edge)
+    if not behind:
+        if (towards > 0 and ax_x > knee_x) or (towards < 0 and ax_x < knee_x):
+            knee_x = ax_x
+        ax.plot([ax_x, knee_x, lx], [ax_y, ly, ly], transform=ax.transAxes, color=LEADER,
+                alpha=0.55, lw=0.6 * s, solid_capstyle="round", solid_joinstyle="miter",
+                dashes=(4, 3) if dashed else (None, None), zorder=zorder,
+                path_effects=[patheffects.withStroke(linewidth=1.8 * s, foreground="#05070B66")])
+        LEADERS.append((key, (ax_x, ax_y), (knee_x, ly), (lx, ly)))
     # the survey mark keeps the category colour: it is the one place the leader
     # touches its subject, so it is where the classification belongs
     if dashed:
@@ -458,7 +514,14 @@ def draw_title(ax, F, s, copy=None):
     feathered scrim, with no per-letter stroke fighting it.
     """
     copy = copy or TITLE
-    scrim(ax, 0.0, 0.52, 0.70, 1.0, strength=0.74, direction="left")
+    # The scrim is sized to the title block, not to a comfortable-looking
+    # rectangle. In this framing the sky is only the top 28 % of the frame, and
+    # a scrim reaching down to 0.52 at 0.74 strength covered all of it across
+    # 70 % of the width -- so the night sky the brief asks for was measurably
+    # present (4753 star pixels, mean luminance 43) and visually gone. It now
+    # holds full strength over the title and deck and fades out just above the
+    # horizon.
+    scrim(ax, 0.0, 0.70, 0.70, 1.0, strength=0.56, direction="left")
     x = MARGIN
     text(ax, x, 0.950, copy["title"], F["sans"], TYPE["title"], INK, s, va="top",
          shadow=False, role="title")
@@ -632,7 +695,7 @@ def draw_features(ax, F, s, anno, layout_name, width, height):
         # diagonals cannot cross each other
         items.sort(key=lambda t: -(1.0 - feats[t[1][0]]["y"]))
         anchors = [1.0 - feats[keys[0]]["y"] for _, keys in items]
-        ys = ladder(anchors, len(items))
+        ys = place_rungs(anchors)
         lx = COL_X[0] if side == "left" else COL_X[1]
         ha = "right" if side == "left" else "left"
         for (g, keys), ly in zip(items, ys):
@@ -650,7 +713,7 @@ def draw_features(ax, F, s, anno, layout_name, width, height):
         # the pair is tightened so it reads as one unit against the ladder step
         y_name, y_metric = ly + 0.012, ly - 0.012
         leader(ax, ax_x, ax_y, lx, y_metric, colour, s, width, height, ha=ha,
-               key=keys[0], dashed=dashed)
+               key=keys[0], dashed=dashed, text_edge=tx)
         prev = (ax_x, ax_y)
         for k in keys[1:]:
             px, py = feats[k]["x"], 1.0 - feats[k]["y"]
@@ -690,6 +753,27 @@ def _crosses(p1, p2, p3, p4):
     return d1 != d2 and d3 != d4 and 0 not in (d1, d2, d3, d4)
 
 
+def _seg_hits_box(p, q, x0, y0, x1, y1) -> bool:
+    """Liang-Barsky: does the segment p-q intersect the axis-aligned box?"""
+    dx, dy = q[0] - p[0], q[1] - p[1]
+    t0, t1 = 0.0, 1.0
+    for num, den in ((x0 - p[0], dx), (p[0] - x1, -dx), (y0 - p[1], dy), (p[1] - y1, -dy)):
+        if den == 0:
+            if num > 0:
+                return False
+            continue
+        t = num / den
+        if den > 0:
+            if t > t1:
+                return False
+            t0 = max(t0, t)
+        else:
+            if t < t0:
+                return False
+            t1 = min(t1, t)
+    return t0 <= t1
+
+
 def check_collisions(fig, ax, width, height, *, pad_px=6.0):
     """Measure the layout and report everything that is actually wrong with it.
 
@@ -702,6 +786,8 @@ def check_collisions(fig, ax, width, height, *, pad_px=6.0):
       * text against text, and against the reserved bands
       * every block against the margin, not just the trim
       * leader against leader, as real segment intersections
+      * leader against every text box, which is how a run through its own
+        metric line went unnoticed
       * anything running off the canvas
 
     A guard that measures the wrong quantity is worse than no guard, because it
@@ -773,6 +859,30 @@ def check_collisions(fig, ax, width, height, *, pad_px=6.0):
                     continue
                 break
 
+    # leader against text: the case that slipped through. A run terminating at
+    # the metric's baseline is right until the anchor sits inboard of its own
+    # column, at which point the run crosses the label it belongs to -- and the
+    # checker passed it, because it had no test for a line meeting a box.
+    for key, a, k, e in LEADERS:
+        segs = [((a[0] * width, a[1] * height), (k[0] * width, k[1] * height)),
+                ((k[0] * width, k[1] * height), (e[0] * width, e[1] * height))]
+        for role, x0, y0, x1, y1, _grp in boxes:
+            if role.split(":", 1)[-1] == key:
+                pad = 1.0          # its own label: touching the edge is the point
+            elif role.startswith(("credit", "legend", "title", "deck")):
+                pad = 2.0
+            else:
+                pad = 2.0
+            bx0, by0, bx1, by1 = x0 - pad, y0 - pad, x1 + pad, y1 + pad
+            for p, q in segs:
+                # segment against an axis-aligned box, by clipping
+                if _seg_hits_box(p, q, bx0, by0, bx1, by1):
+                    hits.append((f"leader:{key}", role, "leader/text"))
+                    break
+            else:
+                continue
+            break
+
     # anything running off the canvas
     for role, x0, y0, x1, y1, _grp in boxes:
         if x0 < 2 or y0 < 2 or x1 > width - 2 or y1 > height - 2:
@@ -784,7 +894,8 @@ def check_collisions(fig, ax, width, height, *, pad_px=6.0):
             print(f"    {kind:11s} {a}  <->  {b}")
     else:
         print(f"[annotate] layout OK: {len(boxes)} text blocks and {len(LEADERS)} leaders; "
-              f"no overlaps within {pad_px:.0f} px, no margin breaks, no leader crossings")
+              f"no overlaps within {pad_px:.0f} px, no margin breaks, no leader crossings, "
+              "no leader through type")
     return hits
 
 

@@ -537,7 +537,7 @@ def annotation_anchors() -> dict[str, dict]:
             z=2.0,
             prefer=(0.40, 0.80),                       # the near south edge, below the rings
             label="Fermilab Site",
-            metric=f"{CAMPUS_AREA_KM2:.0f}{NNBSP}km\u00b2, {CAMPUS_AREA_KM2 * 247.105:.0f} acres",
+            metric=f"{CAMPUS_AREA_KM2:.1f}{NNBSP}km\u00b2, {CAMPUS_AREA_KM2 * 247.105:.0f} acres",
             accent="boundary",
         ),
     }
