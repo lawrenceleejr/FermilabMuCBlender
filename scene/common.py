@@ -374,23 +374,38 @@ def tube_mesh(name, points, radius, *, sides=10, col=None, material=None, closed
 
 
 def ribbon_mesh(name, points, width, z, *, col=None, material=None, closed=False):
-    """Flat strip of constant width along a 2D polyline (roads, paths)."""
+    """Flat strip of constant width along a polyline (roads, paths).
+
+    `z` is a constant height, or None to take each point's own third component
+    -- which is what lets a road follow the terrain instead of floating over it.
+    """
     bm = bmesh.new()
     pts = [Vector((p[0], p[1], 0.0)) for p in points]
+    zs = [(z if z is not None else (p[2] if len(p) > 2 else 0.0)) for p in points]
     n = len(pts)
     left, right = [], []
     for i, p in enumerate(pts):
         if closed:
-            t = (pts[(i + 1) % n] - pts[i - 1]).normalized()
+            d = pts[(i + 1) % n] - pts[i - 1]
         else:
-            t = (pts[min(i + 1, n - 1)] - pts[max(i - 1, 0)]).normalized()
+            d = pts[min(i + 1, n - 1)] - pts[max(i - 1, 0)]
+        if d.length < 1e-9:                    # a degenerate span would blow up
+            d = Vector((1.0, 0.0, 0.0))
+        t = d.normalized()
         nrm = Vector((-t.y, t.x, 0.0)) * (width / 2)
-        left.append(bm.verts.new((p.x + nrm.x, p.y + nrm.y, z)))
-        right.append(bm.verts.new((p.x - nrm.x, p.y - nrm.y, z)))
+        left.append(bm.verts.new((p.x + nrm.x, p.y + nrm.y, zs[i])))
+        right.append(bm.verts.new((p.x - nrm.x, p.y - nrm.y, zs[i])))
     m = n if closed else n - 1
+    seen = set()
     for i in range(m):
         j = (i + 1) % n
-        bm.faces.new((left[i], right[i], right[j], left[j]))
+        if i == j or (i, j) in seen:
+            continue
+        seen.add((i, j))
+        try:
+            bm.faces.new((left[i], right[i], right[j], left[j]))
+        except ValueError:                     # coincident span: skip the quad
+            continue
     return bmesh_object(name, bm, col=col, material=material)
 
 

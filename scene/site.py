@@ -4,7 +4,11 @@ buildings, tree cover, distant town glow -- and the proposed 10 km muon
 collider ring drawn as a luminous beamline with its two detector halls.
 
 Coordinates are metres, x east, y north, z up, origin at Wilson Hall.
-Positions are approximate but laid out to match the real site plan.
+
+The site's own geometry -- boundary, water, woods, roads, terrain and the
+existing rings -- is read from the baked OpenStreetMap and DEM plan through
+scene/geo.py rather than hand-placed. Only the proposed machines are authored
+here, and their sizes come from the IMCC parameter list.
 """
 from __future__ import annotations
 
@@ -14,60 +18,89 @@ import random
 import bpy
 
 from . import common as C
+from . import geo
 
-# --- site plan (metres, relative to Wilson Hall) ---------------------------
-TEV_C, TEV_R = (1150.0, 0.0), 1000.0                 # Tevatron main ring (6.3 km)
-MI_C, MI_RX, MI_RY = (650.0, -1600.0), 560.0, 490.0    # Main Injector (3.3 km)
-MC_C = (1300.0, -1150.0)                              # proposed collider ring centre
-MC_IP_ANGLES = (120.0, 300.0)                         # detector halls (deg, opposite); 120 deg sits NE of Wilson Hall, in frame
-LINAC = ((-1000.0, -1600.0), (-225.0, -1600.0))       # proton driver linac, west of the site
+# --- site plan: measured, not guessed ---------------------------------------
+# Everything below the accelerator chain comes from `assets/plan/site_plan.json`
+# (OpenStreetMap, ODbL) via scene/geo.py. It used to be hand-placed, and it was
+# wrong in ways that mattered: the frame's origin sat 701 m south of Wilson
+# Hall, the site polygon enclosed 20.7 km2 against a 27 km2 site, and the Main
+# Injector was drawn about 1.2 km from where it is.
+_TEV = geo.derived("tevatron")
+_MI = geo.derived("main_injector")
+_FILL = geo.derived("site_filler")
+
+TEV_C, TEV_R = tuple(_TEV["center"]), _TEV["radius"]          # (835, -735), r 1000 m
+MI_C = tuple(_MI["center"])                                   # (-533, -1154)
+MI_RX = MI_RY = _MI["radius"]                                 # r 528 m from 3319 m
+CAMPUS_BOUNDARY = [(p[0], p[1]) for p in geo.boundary()]
+CAMPUS_AREA_KM2 = geo.boundary_area_km2()
 
 # --- the muon-collider accelerator chain -------------------------------------
 # Ring sizes are taken from the IMCC "Tentative Parameter list for the
 # International Muon Collider Collaboration", 30 October 2023 (indico.cern.ch
 # event 1313021), Table 3.10 for the acceleration chain, Table 3.19 for the
 # collider and Table 3.2 for the proton-driver compressor. Radii are
-# circumference / 2 pi. Siting on the Fermilab campus is our own and
-# indicative; the machine sizes are the document's.
+# circumference / 2 pi.
 #
 #   collider      C = 10 000 m  -> r = 1591.5 m   (10 TeV; the 3 TeV option is 4.5 km)
 #   RCS1, RCS2    C =  5 990 m  -> r =  953.3 m   (one tunnel, two machines)
 #   RCS3          C = 10 700 m  -> r = 1702.7 m
-#   RCS4          C = 35 000 m  -> r = 5570.4 m   (11 km across: does NOT fit the campus)
 #   compressor    C = 300-900 m -> r =   48-143 m
+#
+# RCS 4 is the exception, deliberately. The IMCC reference is 35 000 m, which
+# is 11.1 km across and does not fit a 5.7 x 6.2 km site -- drawn at that size
+# it left the property on all four sides, and the figure's strongest line was
+# the one contradicting its own claim. This design instead sizes the final
+# synchrotron to the site: a *site filler*, the largest ring the campus can
+# hold. geo measures that as the largest circle inscribed in the real boundary,
+# r 2558 m, less a 250 m setback from the property line -> r 2308 m,
+# circumference 14.50 km. It is a constraint read off the site rather than a
+# number chosen to fit the picture, and a 14.5 km final stage needs more
+# acceleration turns than the 35 km reference -- a trade the label states.
 TAU = 2.0 * math.pi
 MC_R = 10000.0 / TAU                         # 1591.5 m
-RCS12_R = 5990.0 / TAU                       # 953.3 m -- within 5 % of the Tevatron's 6 280 m
+RCS12_R = 5990.0 / TAU                       # 953.3 m -- 95 % of the Tevatron's 6283 m
 RCS3_R = 10700.0 / TAU                       # 1702.7 m
-RCS4_R = 35000.0 / TAU                       # 5570.4 m
+RCS4_R = _FILL["radius"]                     # 2307.9 m: the site filler
+RCS4_C = tuple(_FILL["center"])              # (1522, 387), the inscribed centre
+RCS4_CIRC_M = _FILL["circumference_m"]       # 14 501 m
+IMCC_RCS4_C_M = 35000.0                      # the reference the site filler replaces
+
 PD_ACCUM_R = 900.0 / TAU                     # 143.2 m, compressor upper option
 PD_BUNCH_R = 600.0 / TAU                     # 95.5 m, mid-range
-PD_ACCUM_C = (-250.0, -1770.0)
-PD_BUNCH_C = (-250.0, -2010.0)
-TARGET_XY = (-520.0, -1578.0)                # pion production target hall
+
+# The chain is laid out around the site-filler centre, so the collider sits in
+# the middle of the campus instead of off toward one edge.
+MC_C = RCS4_C
+MC_IP_ANGLES = (120.0, 300.0)                # detector halls, diametrically opposite
+
+# The proton driver and cooling channel run in from the south-west, the part of
+# the campus with no existing machine in it.
+PD_ACCUM_C = (-560.0, -2180.0)
+PD_BUNCH_C = (-560.0, -2430.0)
+TARGET_XY = (-330.0, -1960.0)                # pion production target hall
+LINAC = ((-1750.0, -2180.0), (-720.0, -2180.0))
 
 # Ionisation cooling: the document specifies 10 "B-type" rectilinear stages
 # S1-S10 plus A-stages, bunch merge and final cooling, but no overall length,
 # so the channel is drawn at an indicative 600 m and labelled by stage count.
-COOLING_PATH = [(-430.0, -1500.0), (-250.0, -1430.0), (-60.0, -1330.0),
-                (100.0, -1215.0), (215.0, -1080.0)]
+COOLING_PATH = [(-250.0, -1870.0), (-60.0, -1760.0), (140.0, -1650.0),
+                (330.0, -1540.0), (500.0, -1430.0)]
 COOLING_MODULES = 20
 
-RCS_C = TEV_C                                # the RCS chain sits on the Tevatron's centre
-RCS_RADII = (RCS12_R, RCS3_R)                # the two that fit inside the campus
+# RCS 1 and 2 share the Tevatron tunnel, so they are drawn on the Tevatron's
+# own circle rather than as a separate ring 47 m inside it: claiming reuse
+# while drawing two distinct tunnels was an inconsistency a reader could
+# measure. The 5990 m machine occupies 95 % of the 6283 m tunnel.
+RCS12_C = TEV_C
+RCS12_DRAW_R = TEV_R - 30.0                  # a drawing offset, not a second tunnel
+RCS3_C = RCS4_C
+RCS_C = TEV_C
+RCS_RADII = (RCS12_DRAW_R, RCS3_R)
 
-SITE_X = (-1000.0, 3450.0)   # Kirk Rd .. Eola Rd
-SITE_Y = (-4000.0, 1800.0)   # south boundary .. Butterfield Rd
-
-# Approximate Fermilab site boundary (~27 km^2 / 6,800 acres): Kirk Road on the
-# west, Wilson Street and Butterfield Road across the north, Eola Road on the
-# east, and the irregular southern edge. Simplified from the public site map --
-# indicative of the real extent rather than a survey.
-CAMPUS_BOUNDARY = [
-    (-1000.0, 1500.0), (1250.0, 1560.0), (2300.0, 1470.0), (3450.0, 1120.0),
-    (3450.0, -1900.0), (2650.0, -3150.0), (900.0, -3620.0), (150.0, -3520.0),
-    (-1000.0, -2650.0),
-]
+SITE_X = (min(p[0] for p in CAMPUS_BOUNDARY), max(p[0] for p in CAMPUS_BOUNDARY))
+SITE_Y = (min(p[1] for p in CAMPUS_BOUNDARY), max(p[1] for p in CAMPUS_BOUNDARY))
 
 COLLIDER_COLOR = (0.16, 0.62, 1.0)
 SODIUM = C.kelvin_rgb(2150)
@@ -162,15 +195,36 @@ def prairie_material():
     return mat
 
 
-def build_terrain(col, mat):
-    half = 30000.0
-    C.mesh_object(
-        "terrain",
-        [(-half, -half, 0), (half, -half, 0), (half, half, 0), (-half, half, 0)],
-        [(0, 1, 2, 3)],
-        col=col,
-        material=mat,
-    )
+TERRAIN_GRID = 384          # 60 km / 384 = 156 m per quad
+TERRAIN_HALF = 30000.0
+
+
+def build_terrain(col, mat, *, grid=TERRAIN_GRID):
+    """The ground, displaced by a real elevation model.
+
+    Northern Illinois is glacial plain, so there was a temptation to invent
+    hills for the distance view. The DEM says not to: within 6 km of the site
+    the relief is 85 m, and the campus itself is flat to about a tenth of a
+    metre. What the horizon actually has is long-wavelength moraine relief --
+    267 m across the 60 km box, rising to the north-west -- which is invisible
+    at close range and shapes the whole skyline at 20 km. Inventing mountains
+    would have replaced the one thing the terrain does contribute.
+
+    Falls back to a flat quad when the baked DEM is absent, so the scene still
+    builds from a bare checkout.
+    """
+    if not geo.has_dem():
+        print("[site] no DEM in the baked plan; terrain is flat")
+        C.mesh_object("terrain",
+                      [(-TERRAIN_HALF, -TERRAIN_HALF, 0), (TERRAIN_HALF, -TERRAIN_HALF, 0),
+                       (TERRAIN_HALF, TERRAIN_HALF, 0), (-TERRAIN_HALF, TERRAIN_HALF, 0)],
+                      [(0, 1, 2, 3)], col=col, material=mat)
+        return
+    verts, faces = geo.dem_grid(grid, TERRAIN_HALF)
+    zs = [v[2] for v in verts]
+    print(f"[site] terrain {grid}x{grid} over {2 * TERRAIN_HALF / 1000:.0f} km, "
+          f"z {min(zs):+.0f}..{max(zs):+.0f} m")
+    C.mesh_object("terrain", verts, faces, col=col, material=mat, smooth=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -261,32 +315,43 @@ def build_campus_boundary(col, *, width=11.0, strength=1.2, camera_strength=4.0,
     return obj
 
 
-def _build_rcs(col, concrete):
-    """The rapid-cycling synchrotron tunnels, at the IMCC circumferences.
+# (name, centre, drawn radius) for the synchrotron chain. RCS 1 and 2 ride the
+# Tevatron tunnel; RCS 3 and the site filler are centred on the campus.
+RCS_RINGS = (
+    ("rcs12", RCS12_C, RCS12_DRAW_R),
+    ("rcs3", RCS3_C, RCS3_R),
+    ("rcs4", RCS4_C, RCS4_R),
+)
 
-    RCS1 and RCS2 share one 5 990 m tunnel, so it is drawn once and carries
-    both machines. RCS3 (10 700 m) gets its own ring. RCS4 (35 000 m) is 11 km
-    across and cannot be sited inside the campus at all, so it is drawn dimmer
-    and sweeping outside the boundary -- which is the honest picture, and the
-    single most useful thing this figure says about siting the full chain here.
+
+def _build_rcs(col, concrete):
+    """The rapid-cycling synchrotron tunnels.
+
+    RCS 1 and 2 share one 5 990 m tunnel and ride the existing Tevatron ring,
+    so they are drawn on the Tevatron's own circle -- offset 30 m purely so
+    both lines are visible -- rather than as a separate ring 47 m inside it.
+    Claiming tunnel reuse while drawing two distinct tunnels whose
+    circumferences differ by 5 % was an inconsistency a reader could measure
+    off the scale bar.
+
+    RCS 4 is the site filler: at 14.5 km it is the largest ring the campus can
+    hold, and it fits, where the IMCC's 35 km reference is 11 km across and
+    left the property on all four sides. It is now the outermost proposed ring
+    rather than a curve sweeping off the edge of the frame.
     """
-    tunnel = C.emissive_material("rcs_tunnel", (0.55, 0.52, 1.0), 1.2, camera_strength=7.0)
-    for name, r in (("rcs12", RCS12_R), ("rcs3", RCS3_R)):
-        C.tube_mesh(f"{name}_tunnel", C.circle_points(RCS_C, r, n=560, z=4.4), 0.7,
+    tunnel = C.emissive_material("rcs_tunnel", (0.42, 0.78, 1.0), 1.2, camera_strength=7.0)
+    for name, c, r in RCS_RINGS:
+        C.tube_mesh(f"{name}_tunnel", C.circle_points(c, r, n=720, z=4.4), 0.7,
                     sides=6, col=col, material=tunnel, closed=True)
     # RF straights: short brighter runs so the rings read as machines, not contours
-    rf = C.emissive_material("rcs_rf", (0.72, 0.70, 1.0), 2.5, camera_strength=16.0)
-    for name, r in (("rcs12", RCS12_R), ("rcs3", RCS3_R)):
+    rf = C.emissive_material("rcs_rf", (0.62, 0.88, 1.0), 2.5, camera_strength=16.0)
+    for name, c, r in RCS_RINGS:
         for k in range(4):
             a0 = math.radians(90 * k + 12)
             a1 = a0 + math.radians(11)
-            pts = [(RCS_C[0] + r * math.cos(a), RCS_C[1] + r * math.sin(a), 4.4)
+            pts = [(c[0] + r * math.cos(a), c[1] + r * math.sin(a), 4.4)
                    for a in [a0 + (a1 - a0) * j / 8 for j in range(9)]]
             C.tube_mesh(f"{name}_rf_{k}", pts, 1.5, sides=6, col=col, material=rf)
-    # RCS4: beyond the campus, so dimmer and unlit-looking -- a note, not a claim
-    far = C.emissive_material("rcs4_tunnel", (0.46, 0.44, 0.92), 0.5, camera_strength=3.2)
-    C.tube_mesh("rcs4_tunnel", C.circle_points(MC_C, RCS4_R, n=900, z=4.4), 3.0,
-                sides=8, col=col, material=far, closed=True)
 
 
 def _build_proton_driver(col, concrete):
@@ -427,25 +492,25 @@ def annotation_anchors() -> dict[str, dict]:
             accent="collider",
         ),
         "rcs12": dict(
-            ring=dict(center=RCS_C, radius=RCS12_R, z=4.4),
+            ring=dict(center=RCS12_C, radius=RCS12_DRAW_R, z=4.4),
             prefer=(0.42, 0.62),
             label="RCS 1 & 2",
-            metric=f"{circ_km(RCS12_R)} shared tunnel",
+            metric=f"in the Tevatron tunnel, {circ_km(RCS12_R)} of {circ_km(TEV_R)}",
             accent="collider",
         ),
         "rcs3": dict(
-            ring=dict(center=RCS_C, radius=RCS3_R, z=4.4),
+            ring=dict(center=RCS3_C, radius=RCS3_R, z=4.4),
             prefer=(0.28, 0.55),
             label="RCS 3",
             metric=circ_km(RCS3_R),
             accent="collider",
         ),
         "rcs4": dict(
-            ring=dict(center=MC_C, radius=RCS4_R, z=4.4),
-            prefer=(0.12, 0.30),
-            label="RCS 4",
-            metric=f"{circ_km(RCS4_R)}, beyond the campus",
-            accent="offsite",
+            ring=dict(center=RCS4_C, radius=RCS4_R, z=4.4),
+            prefer=(0.16, 0.36),
+            label="RCS 4 site filler",
+            metric=f"{circ_km(RCS4_R)}, largest ring the site holds",
+            accent="collider",
         ),
         "tevatron": dict(
             ring=dict(center=TEV_C, radius=TEV_R, z=6.6),
@@ -472,7 +537,7 @@ def annotation_anchors() -> dict[str, dict]:
             z=2.0,
             prefer=(0.33, 0.74),                       # the near south-west edge
             label="Fermilab Site",
-            metric=f"{polygon_area_km2(CAMPUS_BOUNDARY):.0f}{NNBSP}km\u00b2 as drawn",
+            metric=f"{CAMPUS_AREA_KM2:.0f}{NNBSP}km\u00b2, {CAMPUS_AREA_KM2 * 247.105:.0f} acres",
             accent="boundary",
         ),
     }
@@ -481,42 +546,44 @@ def annotation_anchors() -> dict[str, dict]:
 # --------------------------------------------------------------------------- #
 # water
 # --------------------------------------------------------------------------- #
-LAKES = [
-    # name, (x, y), rx, ry, rot(deg), seed
-    ("lake_law", (-470.0, -800.0), 130.0, 90.0, 20, 1),
-    ("swan_lake", (2350.0, -900.0), 160.0, 110.0, -15, 2),
-    ("ae_sea", (2560.0, -380.0), 200.0, 150.0, 30, 3),
-    ("caseys_pond", (330.0, 930.0), 115.0, 80.0, 10, 4),
-    ("nepese_marsh", (-820.0, 320.0), 150.0, 95.0, -25, 5),
-    ("lake_logo", (-60.0, 380.0), 70.0, 48.0, 0, 6),
-    ("mi_pond_e", (1390.0, -1780.0), 105.0, 60.0, 15, 7),
-    ("mi_pond_w", (-40.0, -1900.0), 90.0, 62.0, -10, 8),
-    ("south_pond", (900.0, -2700.0), 140.0, 100.0, 40, 9),
-    ("north_pond", (1600.0, 1350.0), 120.0, 75.0, -35, 10),
-]
-
-
 def build_water(col, water):
-    for name, c, rx, ry, rot, seed in LAKES:
-        C.blob_mesh(name, c, rx, ry=ry, z=0.08, rot=math.radians(rot), seed=seed, col=col, material=water)
+    """Every mapped water body inside 9 km, as its real outline.
+
+    These used to be ten hand-placed ellipses. The Tevatron's cooling ponds
+    follow the ring, the Main Injector's pond arcs around its berm, and the
+    site's lakes have shapes a viewer at this scale can read -- none of which
+    an ellipse at a guessed position reproduces.
+
+    Each pond is laid flat at the ground height of its own centroid: sloping a
+    lake with the terrain looks broken, and the campus is flat enough that one
+    height per body is right to well under a metre.
+    """
+    n = 0
+    for w in geo.ways("water", closed=True, min_pts=4, radius=9000.0):
+        pts = w["pts"]
+        cx = sum(p[0] for p in pts) / len(pts)
+        cy = sum(p[1] for p in pts) / len(pts)
+        z = geo.elev(cx, cy) + 0.08
+        ring = clean_way(pts, True)
+        if len(ring) < 3:
+            continue
+        verts = [(p[0], p[1], z) for p in ring]
+        C.mesh_object(f"water_{w['name'] or n}_{n}", verts, [tuple(range(len(verts)))],
+                      col=col, material=water)
+        n += 1
+    print(f"[site] {n} mapped water bodies")
+    return n
 
 
 # --------------------------------------------------------------------------- #
 # roads and lights
 # --------------------------------------------------------------------------- #
-ROADS = {
-    # name: polyline (or 'circle' spec)
-    "pine_street": [(-1000.0, 62.0), (-330.0, 62.0), (-250.0, 55.0), (-175.0, 30.0), (-150.0, -10.0), (-150.0, -60.0)],
-    "batavia_road": [(-1000.0, -1040.0), (3450.0, -1040.0)],
-    "wilson_street": [(-1000.0, 1400.0), (3450.0, 1400.0)],
-    "road_a": [(-260.0, -3900.0), (-260.0, 1750.0)],
-    "road_d": [(2300.0, -3900.0), (2300.0, 1750.0)],
-    "kautz_road": [(3000.0, -3900.0), (3000.0, 1750.0)],
-    "kirk_road": [(-1000.0, -4000.0), (-1000.0, 1800.0)],
-    "eola_road": [(3450.0, -4000.0), (3450.0, 1800.0)],
-    "wh_south_drive": [(-150.0, -60.0), (-150.0, -260.0), (100.0, -260.0), (100.0, -500.0)],
-    "wh_east_drive": [(240.0, 120.0), (240.0, -120.0)],
-}
+# Which OSM road layers to draw, how wide, and how far out to bother.
+ROAD_LAYERS = (
+    ("major_roads", 11.0, 16000.0),
+    ("minor_roads", 7.5, 7000.0),
+    ("site_roads", 6.0, 5000.0),
+)
 
 
 def asphalt_material():
@@ -524,10 +591,27 @@ def asphalt_material():
 
 
 def build_roads(col, asphalt):
-    for name, pts in ROADS.items():
-        C.ribbon_mesh(name, pts, 8.0, 0.12, col=col, material=asphalt)
-    C.ribbon_mesh("ring_road", C.circle_points(TEV_C, TEV_R + 26.0, n=480), 6.5, 0.12, col=col, material=asphalt, closed=True)
-    C.ribbon_mesh("mi_road", C.circle_points(MI_C, MI_RX + 26.0, n=360, ry=MI_RY + 26.0), 6.5, 0.12, col=col, material=asphalt, closed=True)
+    """The real road network, draped on the terrain.
+
+    The hand-authored version was eleven straight lines on a grid. The mapped
+    network is what gives the distance view its structure -- the section-line
+    grid of northern Illinois, the diagonal of the rail corridor, the curve of
+    the Tevatron's ring road -- and it is also what the street lights need,
+    since lights belong on roads that exist.
+    """
+    n = 0
+    for layer, width, radius in ROAD_LAYERS:
+        for w in geo.ways(layer, min_pts=2, radius=radius):
+            closed = bool(w.get("closed"))
+            pts = clean_way(w["pts"], closed)
+            if len(pts) < (3 if closed else 2):
+                continue
+            pts3 = [(x, y, geo.elev(x, y) + 0.12) for x, y in pts]
+            C.ribbon_mesh(f"road_{layer}_{n}", pts3, width, None, col=col,
+                          material=asphalt, closed=closed)
+            n += 1
+    print(f"[site] {n} mapped road segments")
+    return n
 
 
 def _lamp_factory(col):
@@ -559,29 +643,83 @@ def _lamp_factory(col):
     return lamp
 
 
-def build_street_lights(col):
+def clean_way(pts, closed=False, *, eps=0.5):
+    """Drop repeated vertices, and the duplicated closing vertex on a ring.
+
+    OSM writes a closed way with its first point repeated at the end. Handing
+    that to ribbon_mesh with closed=True makes it wrap onto a face that already
+    exists, which bmesh refuses -- so the endpoint comes off here rather than at
+    every call site.
+    """
+    out = []
+    for p in pts:
+        q = (p[0], p[1])
+        if out and math.hypot(q[0] - out[-1][0], q[1] - out[-1][1]) < eps:
+            continue
+        out.append(q)
+    if closed and len(out) > 1 and math.hypot(out[0][0] - out[-1][0], out[0][1] - out[-1][1]) < eps:
+        out.pop()
+    return out
+
+
+def _resample(pts, spacing):
+    """Points every `spacing` metres along a polyline."""
+    out, carry = [], 0.0
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        seg = math.hypot(x1 - x0, y1 - y0)
+        if seg < 1e-6:
+            continue
+        t = carry
+        while t < seg:
+            f = t / seg
+            out.append((x0 + (x1 - x0) * f, y0 + (y1 - y0) * f))
+            t += spacing
+        carry = t - seg
+    return out
+
+
+def build_street_lights(col, *, near=1800.0, far=12000.0, cap=4200):
+    """Lights on the roads that exist, near ones as poles and far ones as points.
+
+    "Street lights in the distance" is most of what tells a viewer this is an
+    inhabited landscape rather than an empty plain, and at 10 km a lamp is a
+    point of light -- a pole would be a tenth of a pixel. So the near field
+    gets pole-and-head geometry and everything beyond `near` gets a bare
+    emissive point at lamp height, which is both what it looks like and what
+    keeps the instance count somewhere Cycles can sample.
+
+    Capped, because the mapped network inside 12 km carries a few hundred
+    kilometres of road and lighting all of it at 100 m spacing would be tens of
+    thousands of emitters.
+    """
     lamp = _lamp_factory(col)
-    # Pine Street approach, alternating sides
-    for i, x in enumerate(range(-1000, -330, 46)):
-        lamp(x, 62.0 + (7.0 if i % 2 else -7.0), "sodium")
-    # Wilson Hall west parking lot grid
-    for x in range(-330, -120, 42):
-        for y in range(-105, 106, 52):
-            lamp(x + (21 if (y // 52) % 2 else 0), y, "led" if (x + y) % 3 == 0 else "sodium")
-    # plaza / pond edge
-    for y in (-40.0, 0.0, 40.0):
-        lamp(70.0, y, "led")
-        lamp(190.0, y, "led")
-    # south drive + IARC lot
-    for y in range(-90, -480, -45):
-        lamp(-157.0, y, "sodium")
-    for x in range(120, 300, 40):
-        lamp(x, -180.0, "led")
-    # Batavia Road near the Road A / Kautz intersections and Road A near WH
-    for x in range(-500, 520, 62):
-        lamp(x, -1047.0, "sodium")
-    for y in range(-700, 700, 60):
-        lamp(-267.0, y, "sodium")
+    sodium = C.emissive_material("lamp_far_sodium", SODIUM, 26.0, camera_strength=30.0)
+    head_far = C.sphere_mesh_data("lamp_far_head", 1.1)
+    head_far.materials.append(sodium)
+    rng = random.Random(41)
+    n_near = n_far = 0
+
+    for layer, spacing, radius in (("major_roads", 105.0, far),
+                                   ("site_roads", 70.0, near)):
+        for w in geo.ways(layer, min_pts=2, radius=radius):
+            pts = [(p[0], p[1]) for p in w["pts"]]
+            for i, (x, y) in enumerate(_resample(pts, spacing)):
+                d = math.hypot(x, y)
+                if d > radius:
+                    continue
+                # thin them out with distance: a far road reads as a dotted
+                # line of light, not a continuous strip
+                if d > near and rng.random() > 0.55:
+                    continue
+                if d <= near:
+                    lamp(x, y + (6.0 if i % 2 else -6.0), "sodium")
+                    n_near += 1
+                elif n_far < cap:
+                    C.instance(f"lamp_far_{n_far}", head_far, col=col,
+                               location=(x, y, geo.elev(x, y) + 9.2))
+                    n_far += 1
+    print(f"[site] street lights: {n_near} poles inside {near / 1000:.1f} km, "
+          f"{n_far} distant points out to {far / 1000:.0f} km")
     return lamp
 
 
@@ -701,24 +839,32 @@ def build_buildings(col, concrete):
 # --------------------------------------------------------------------------- #
 # trees
 # --------------------------------------------------------------------------- #
+_WATER_RINGS = None
+
+
+def _water_rings():
+    global _WATER_RINGS
+    if _WATER_RINGS is None:
+        _WATER_RINGS = [[(p[0], p[1]) for p in w["pts"]]
+                        for w in geo.ways("water", closed=True, min_pts=4, radius=9000.0)]
+    return _WATER_RINGS
+
+
 def _keep_out(x, y):
-    """Avoid roads, berms, rings, water and Wilson Hall when scattering trees."""
+    """Avoid the machines, the water and Wilson Hall when scattering trees."""
     if -140 < x < 330 and -110 < y < 110:            # Wilson Hall + plaza + pond
         return False
     if dist_to_ring((x, y), TEV_C, TEV_R) < 60:
         return False
-    if abs(math.hypot((x - MI_C[0]) / MI_RX, (y - MI_C[1]) / MI_RY) - 1.0) * 500 < 55:
+    if dist_to_ring((x, y), MI_C, MI_RX) < 55:
         return False
     if dist_to_ring((x, y), MC_C, MC_R) < 25:
         return False
-    for pts in ROADS.values():
-        for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
-            dx, dy = x1 - x0, y1 - y0
-            t = max(0.0, min(1.0, ((x - x0) * dx + (y - y0) * dy) / (dx * dx + dy * dy + 1e-9)))
-            if math.hypot(x - (x0 + t * dx), y - (y0 + t * dy)) < 10:
-                return False
-    for _, c, rx, ry, rot, _ in LAKES:
-        if math.hypot((x - c[0]) / (rx * 1.3), (y - c[1]) / (ry * 1.3)) < 1.0:
+    for _, c, r in RCS_RINGS:
+        if dist_to_ring((x, y), c, r) < 22:
+            return False
+    for ring in _water_rings():
+        if geo.point_in(ring, x, y):
             return False
     for _, (bx, by), (sx, sy, _), _, _ in BUILDINGS:
         if abs(x - bx) < sx / 2 + 8 and abs(y - by) < sy / 2 + 8:
@@ -726,21 +872,19 @@ def _keep_out(x, y):
     return True
 
 
-WOODS = [
-    # centre, rx, ry, count  (Big Woods west/north-west, riparian strips, east woods)
-    ((-620.0, 900.0), 420.0, 330.0, 1100),
-    ((-780.0, -1900.0), 260.0, 420.0, 520),
-    ((2650.0, 520.0), 380.0, 260.0, 520),
-    ((2800.0, -1500.0), 300.0, 260.0, 380),
-    ((1000.0, 1450.0), 300.0, 160.0, 260),
-    ((-400.0, 380.0), 170.0, 110.0, 160),
-    ((-150.0, -1350.0), 220.0, 120.0, 180),
-    ((400.0, -2600.0), 500.0, 250.0, 420),
-    ((-420.0, -230.0), 110.0, 70.0, 140),     # copse SW of Wilson Hall: dark foreground anchor for the aerial camera
-]
+def build_trees(col, *, density=1.0, spacing=15.0, cap=26000):
+    """Trees where OpenStreetMap says there are trees.
 
+    The nine hand-drawn ellipses this replaces were guesses at where Fermilab's
+    woodland is. The mapped `natural=wood` and `landuse=forest` polygons put it
+    where it is -- the Big Woods, the riparian strips along Indian Creek and the
+    Fox River, and the blocks of forest preserve out to 14 km that give the
+    distance view its treeline.
 
-def build_trees(col, *, density=1.0):
+    Points come from a jittered grid inside each polygon rather than uniform
+    random placement, which clumps badly enough at these counts to read as
+    noise instead of canopy.
+    """
     rng = random.Random(11)
     canopy_mat = C.flat_material("canopy", (0.035, 0.055, 0.025), roughness=0.9)
     trunk_mat = C.flat_material("trunk", (0.05, 0.04, 0.03), roughness=0.9)
@@ -754,44 +898,35 @@ def build_trees(col, *, density=1.0):
     trunk.materials.append(trunk_mat)
     n = [0]
 
-    def tree(x, y, s=None):
+    def tree(x, y, s=None, *, trunked=True):
         s = s or rng.uniform(5.5, 9.5)
         n[0] += 1
-        C.instance(f"tree_{n[0]}", canopies[n[0] % 4], col=col, location=(x, y, 4.2 + 0.55 * s), rotation=(0, 0, rng.uniform(0, 6.28)), scale=(s, s * rng.uniform(0.85, 1.1), s * 0.9))
-        C.instance(f"trunk_{n[0]}", trunk, col=col, location=(x, y, 0.0), scale=(1, 1, 0.9 + 0.1 * s))
+        z = geo.elev(x, y)
+        C.instance(f"tree_{n[0]}", canopies[n[0] % 4], col=col,
+                   location=(x, y, z + 4.2 + 0.55 * s), rotation=(0, 0, rng.uniform(0, 6.28)),
+                   scale=(s, s * rng.uniform(0.85, 1.1), s * 0.9))
+        if trunked:
+            C.instance(f"trunk_{n[0]}", trunk, col=col, location=(x, y, z),
+                       scale=(1, 1, 0.9 + 0.1 * s))
 
-    for c, rx, ry, count in WOODS:
-        for _ in range(int(count * density)):
-            a, r = rng.uniform(0, 2 * math.pi), math.sqrt(rng.random())
-            x, y = c[0] + rx * r * math.cos(a), c[1] + ry * r * math.sin(a)
-            if _keep_out(x, y):
-                tree(x, y, rng.uniform(6.0, 10.5))
-    # tree lines along Pine Street and Road A
-    for x in range(-1000, -330, 13):
-        for side in (-1, 1):
-            if rng.random() < 0.85:
-                tree(x + rng.uniform(-2, 2), 62.0 + side * 16.0 + rng.uniform(-2, 2), rng.uniform(5, 8))
-    for y in range(-1900, 1600, 15):
-        if rng.random() < 0.6:
-            tree(-260.0 + rng.choice((-1, 1)) * 17.0 + rng.uniform(-2, 2), y + rng.uniform(-3, 3), rng.uniform(5, 8))
-    # scattered prairie trees / hedgerows
-    for _ in range(int(650 * density)):
-        x, y = rng.uniform(*SITE_X), rng.uniform(*SITE_Y)
-        if math.hypot(x - TEV_C[0], y - TEV_C[1]) < 930:    # restored prairie inside the ring
+    polys = []
+    for layer in ("wood", "forest"):
+        for w in geo.ways(layer, closed=True, min_pts=4, radius=14000.0):
+            polys.append([(p[0], p[1]) for p in w["pts"]])
+    step = spacing / max(density, 0.05) ** 0.5
+    pts = geo.scatter_in_polygons(polys, step, rng, limit=cap)
+    for x, y in pts:
+        if not _keep_out(x, y):
             continue
-        if _keep_out(x, y):
-            tree(x, y)
-    # clumps around Wilson Hall's north side and the lakes
-    for _ in range(int(90 * density)):
-        x, y = rng.uniform(-230, 60), rng.uniform(120, 300)
-        if _keep_out(x, y):
-            tree(x, y, rng.uniform(5, 8))
-    for _, c, rx, ry, rot, _ in LAKES:
-        for _ in range(int(28 * density)):
-            a = rng.uniform(0, 2 * math.pi)
-            x, y = c[0] + rx * 1.45 * math.cos(a), c[1] + ry * 1.45 * math.sin(a)
-            if _keep_out(x, y):
-                tree(x, y, rng.uniform(5, 8))
+        far = math.hypot(x, y) > 3500.0
+        tree(x, y, rng.uniform(6.0, 10.5), trunked=not far)
+    # hedgerows along the mapped field roads: the prairie's other vertical
+    for w in geo.ways("minor_roads", min_pts=2, radius=6000.0):
+        line = [(p[0], p[1]) for p in w["pts"]]
+        for x, y in _resample(line, 26.0):
+            if rng.random() < 0.13 and _keep_out(x, y):
+                tree(x + rng.uniform(-6, 6), y + rng.uniform(-6, 6), rng.uniform(5, 8))
+    print(f"[site] {n[0]} trees from {len(polys)} mapped wood/forest polygons")
     return n[0]
 
 
