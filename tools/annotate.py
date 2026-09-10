@@ -129,13 +129,13 @@ def load_fonts() -> dict[str, fm.FontProperties]:
     return out
 
 
-def spaced(text: str, em: float = 0.18) -> str:
-    """Letter-spacing for small caps labels, which need air to stay legible.
+def spaced(text: str, wide: bool = False) -> str:
+    """Letter-space an all-caps label, which needs air to stay legible.
 
-    matplotlib has no tracking control, so widen with thin spaces.
+    matplotlib exposes no tracking control, so insert the space instead: a thin
+    space (U+2009) by default, a full space when `wide`.
     """
-    gap = " " if em < 0.25 else " "
-    return gap.join(text)
+    return (" " if not wide else " ").join(text)
 
 
 # --------------------------------------------------------------------------- #
