@@ -65,13 +65,21 @@ def main() -> int:
     # --- figure / ground -----------------------------------------------------
     sky = L[:int(h * 0.13)]
     mid = L[int(h * 0.30):int(h * 0.78)]
+    # the same band restricted to the picture columns. The callout gutters are
+    # annotation, not subject: bright label type inflates the full-width figure
+    # and a scrim behind it deflates the same number, so both are reported and
+    # neither is the whole answer.
+    mid_pic = L[int(h * 0.30):int(h * 0.78), int(w * 0.28):int(w * 0.72)]
     foot = L[int(h * 0.85):]
     print("\nfigure/ground (mean luminance 0-255)")
     print(f"  sky band      rows 0-{int(h * .13):<5d} {sky.mean():6.1f}")
-    print(f"  subject band  rows {int(h * .30)}-{int(h * .78):<5d} {mid.mean():6.1f}")
+    print(f"  subject band  rows {int(h * .30)}-{int(h * .78):<5d} {mid.mean():6.1f} "
+          f"(picture columns only: {mid_pic.mean():.1f})")
     print(f"  footer band   rows {int(h * .85)}-{h:<5d} {foot.mean():6.1f}")
-    verdict = "subject leads" if mid.mean() >= sky.mean() * 0.72 else "SKY DOMINATES the subject"
-    print(f"  -> {verdict} (subject/sky {mid.mean() / max(sky.mean(), 1e-6):.2f})")
+    r_all = mid.mean() / max(sky.mean(), 1e-6)
+    r_pic = mid_pic.mean() / max(sky.mean(), 1e-6)
+    verdict = "subject leads" if r_pic >= 0.72 else "SKY DOMINATES the subject"
+    print(f"  -> {verdict} (subject/sky {r_all:.2f} full width, {r_pic:.2f} picture columns)")
 
     # brightest cell of a coarse grid: where does the eye actually go
     gy, gx = 5, 8

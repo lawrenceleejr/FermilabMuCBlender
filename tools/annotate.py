@@ -316,6 +316,10 @@ def scrim(ax, x0, y0, x1, y1, *, strength=0.62, direction="left", feather=0.40, 
     the image visible and reads as intentional, where a hard box or a per-letter
     outline reads as a screenshot.
 
+    `direction="flat"` gives an even ground that fades out on every interior
+    edge, for backing a column of callouts: a directional ramp there is either
+    too weak where the type is or too heavy where it is not.
+
     The whole justification for a scrim is that it has no locatable edge, and
     the previous version had one: the ramp fell to zero on the far side only,
     so its other three sides ended in a hard step -- measured at +19 luminance
@@ -326,7 +330,9 @@ def scrim(ax, x0, y0, x1, y1, *, strength=0.62, direction="left", feather=0.40, 
     """
     n = 256
     ramp = np.linspace(0.0, 1.0, n)          # imshow origin="lower": row 0 is the bottom
-    if direction == "left":                  # darkest at the left edge
+    if direction == "flat":                  # even, relying entirely on the feather
+        a = np.ones((n, n))
+    elif direction == "left":                # darkest at the left edge
         a = (1.0 - ramp)[None, :].repeat(n, 0)
     elif direction == "right":               # darkest at the right edge
         a = ramp[None, :].repeat(n, 0)
@@ -670,6 +676,27 @@ def draw_scale_and_north(ax, F, s, anno, width, height):
          F["sans"], TYPE["credit"], INK_DIM, s, ha="right", va="center", shadow=False, role="legend:scale", group="scale")
 
 
+def draw_columns(ax, s):
+    """A quiet ground under each callout column.
+
+    The callouts sit over the render, and what is behind them is whatever the
+    site happens to put there -- the boundary ribbon runs behind three labels
+    on the left, and a per-letter outline at these sizes clogs the counters.
+    An even, fully feathered scrim per column gives the type a ground that is
+    the same everywhere the type is, and no locatable edge anywhere else. The
+    vertical extent runs past the callout band at both ends so the fade lands
+    in space the labels do not use.
+    """
+    # Kept as narrow and as light as the type allows. A wider, stronger pair
+    # measurably re-inverted the figure/ground the reframing had just fixed:
+    # at x 0..0.30 and 0.44 strength they darkened 60 % of the width across the
+    # subject band and took the subject/sky ratio from 0.83 back to 0.67. The
+    # extent below just clears the longest metric string.
+    for x0, x1 in ((0.0, 0.255), (0.745, 1.0)):
+        scrim(ax, x0, 0.115, x1, 0.800, strength=0.36, direction="flat",
+              feather=0.15, zorder=2)
+
+
 def draw_features(ax, F, s, anno, layout_name, width, height):
     """Place the callout ladders, choosing sides and order from the geometry."""
     groups = []
@@ -948,6 +975,7 @@ def build(args) -> int:
             deck=(args.deck.replace("\\n", "\n") if args.deck else TITLE["deck"]),
         ))
         draw_footer(ax, F, s, anno, width)
+        draw_columns(ax, s)
         draw_ribbon(ax, F, s, width)
         draw_key(ax, F, s, width)
         draw_scale_and_north(ax, F, s, anno, width, height)
