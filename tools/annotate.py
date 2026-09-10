@@ -392,60 +392,72 @@ def spaced(text: str, wide: bool = False) -> str:
 # --------------------------------------------------------------------------- #
 # helpers
 # --------------------------------------------------------------------------- #
-def vignette(ax, anno, *, strength=0.55, ramp_x=0.085, ramp_y=0.105, zorder=1):
-    """A soft darkening outside the subject, to give the type a ground.
+def vignette(ax, anno, width, height, *, strength=0.78, r0=0.285, r1=0.44,
+             stretch=1.12, zorder=1):
+    """A lens vignette: radial, centred on the subject, sized to spare it.
 
     The type sits at the edges of the frame and the subject sits in the middle,
-    which is what makes this the right instrument rather than the panels it
-    replaced: it darkens where the words are, leaves the drawing alone, and
-    because it has no edge anywhere there is nothing to read as a pasted
-    rectangle.
+    so darkening radially gives the words a ground and leaves the drawing
+    alone, with no edge anywhere to read as a pasted rectangle. It is applied
+    to the overlay only, so the unlabelled render is untouched.
 
-    The shape is the subject's own bounding box -- the site outline projected
-    through the render camera, which build_scene.py writes into the annotation
-    JSON -- with the falloff starting at that box's edge and ramping outward.
-    Not a circle, and not an ellipse either, both of which were tried first and
-    are geometrically unable to do the job here: the site's box reaches x 0.767
-    and the right-hand text column starts at 0.810, so there is 0.043 of frame
-    between the subject and the type. Any falloff that is a function of one
-    radius has to spend its whole ramp inside that gap or spill onto the site,
-    and an elliptical one measured -17.5 % on the site itself -- the corners of
-    a wide box sit at 1.41 radii, well into the ramp, so the site's east and
-    west ends went dark while the sky above it barely moved.
+    Circular, in *screen* units. The axes here are 0..1 on both sides while the
+    frame is 3:2, so a falloff computed on axes coordinates would come out an
+    ellipse half again as tall as it is wide; the y term is scaled by
+    height/width to undo that. `stretch` then widens the contours by a few per
+    cent to match the subject, which is much wider than it is tall -- at 1.0
+    this is a true circle and at 1.12 it is a circle stretched 12 % along x,
+    which still reads as a lens.
 
-    Taking the excess outside the box per axis instead makes the two
-    independent: zero everywhere inside the box, including its corners, and
-    full strength 0.085 of the width beyond its sides or 0.105 of the height
-    beyond its top and bottom. `hypot` of the two excesses rounds the corners
-    of the resulting frame, so the far corners of the image reach full darkening
-    slightly sooner than its edges do, which is what a vignette should do.
+    Centred on the subject's projected bounding box, which build_scene.py
+    writes into the annotation JSON: the site is off-centre in this camera
+    (0.489, 0.395 against the frame's 0.5, 0.5), so a frame-centred vignette
+    would bite into one end of it. `r0` and `r1` are radii in units of the
+    frame width -- clear inside r0, full strength beyond r1, smoothstepped
+    between so the derivative is zero at both ends and neither the start nor
+    the top of the ramp shows as a ring.
 
-    Alpha composites over the render in display space, so nothing here can lift
-    a value: the site keeps its own tone and everything outboard of it loses
-    some.
+    Alpha composites in display space, so nothing here can lift a value: the
+    site keeps its own tone and everything outboard of it loses some.
     """
     subj = (anno or {}).get("subject") or {}
     box = subj.get("bbox")
     if not box:
-        # No subject in the JSON (an older dump): fall back to a frame-centred
-        # box and say so, rather than silently vignetting the wrong thing.
+        # No subject in the JSON (an older dump): fall back to the frame centre
+        # and say so, rather than silently vignetting the wrong thing.
         print("[annotate] no subject bbox in the annotations; "
-              "vignette falling back to a frame-centred box")
-        cx, cy, hx, hy = 0.5, 0.5, 0.30, 0.20
+              "vignette falling back to the frame centre")
+        cx, cy, far = 0.5, 0.5, 0.30
     else:
         x0, y0, x1, y1 = box
         cx, cy = (x0 + x1) / 2.0, 1.0 - (y0 + y1) / 2.0     # y_img -> axes
-        hx, hy = max((x1 - x0) / 2.0, 1e-3), max((y1 - y0) / 2.0, 1e-3)
+        hx, hy = (x1 - x0) / 2.0, (y1 - y0) / 2.0
+        # the subject's own farthest corner, in the same metric as r0/r1
+        far = math.hypot(hx / stretch, hy * height / width)
+
+    # r0 is never allowed inside the subject. A ramp that starts on the site
+    # meets the brightest thing in the frame while it is still steep, and that
+    # shows: at stretch 1.0 -- a true circle -- the subject's corner sits at
+    # 0.301 against an r0 of 0.285, and the seam test picked out the ring. The
+    # 12 % stretch is what buys the clearance, which is the whole reason the
+    # contours are not perfectly circular.
+    if r0 < far:
+        print(f"[annotate] vignette: r0 {r0:.3f} would start inside the subject "
+              f"(which reaches {far:.3f}); holding it out to there instead")
+        r1 += far - r0
+        r0 = far
 
     n = 512
-    ex = np.clip((np.abs(np.linspace(0.0, 1.0, n)[None, :] - cx) - hx) / ramp_x, 0.0, None)
-    ey = np.clip((np.abs(np.linspace(0.0, 1.0, n)[:, None] - cy) - hy) / ramp_y, 0.0, None)
-    t = np.clip(np.sqrt(ex * ex + ey * ey), 0.0, 1.0)
+    dx = (np.linspace(0.0, 1.0, n)[None, :] - cx) / stretch
+    dy = (np.linspace(0.0, 1.0, n)[:, None] - cy) * (height / width)
+    r = np.sqrt(dx * dx + dy * dy)
+    t = np.clip((r - r0) / max(r1 - r0, 1e-6), 0.0, 1.0)
     rgba = np.zeros((n, n, 4))
-    rgba[..., 3] = strength * (t * t * (3.0 - 2.0 * t))     # smoothstep: flat at both ends
+    rgba[..., 3] = strength * (t * t * (3.0 - 2.0 * t))     # smoothstep
     ax.imshow(rgba, extent=(0, 1, 0, 1), transform=ax.transAxes, origin="lower",
               aspect="auto", zorder=zorder, interpolation="bilinear")
-    return dict(centre=(cx, cy), half=(hx, hy), ramp=(ramp_x, ramp_y), strength=strength)
+    return dict(centre=(cx, cy), subject_radius=far, r0=r0, r1=r1,
+                stretch=stretch, strength=strength)
 
 
 LEADERS: list[tuple[str, tuple, tuple, tuple]] = []   # (key, anchor, knee, end) in axes coords
@@ -652,8 +664,12 @@ def draw_title(ax, F, s, width, height, copy=None):
     """
     copy = copy or TITLE
     x = MARGIN
+    # A light halo on both blocks up here. The halo is what separated them from
+    # the bare sky when there was nothing else to; the vignette does that job
+    # now, and at full weight the outline was heavy enough to read as an effect
+    # on 36 pt type.
     text(ax, x, 0.955, copy["title"], F["sans"], TYPE["title"], INK, s, va="top",
-         role="title")
+         role="title", halo=0.42)
     # a measured tick, not an orphaned underline: the old 99 px rule under a
     # 560 px title read as neither. Neutral, so the title block does not enrol
     # itself in the categorical colour scale.
@@ -681,7 +697,7 @@ def draw_title(ax, F, s, width, height, copy=None):
     # the deck's linespacing comes down from 1.32 to 1.24. Everything above
     # 0.789.
     t = text(ax, x, 0.867, copy["deck"], F["sans"], TYPE["deck"], "#D8D3C9", s, va="top",
-             role="deck", linespacing=1.24)
+             role="deck", linespacing=1.24, halo=0.42)
     # Return where the block actually ends, rather than leaving the ladder to
     # trust a typed constant. TITLE_FLOOR was 0.800 and the deck's measured
     # bottom is 0.769: the moment the deck took a second line the constant was
@@ -1221,11 +1237,11 @@ def build(args) -> int:
             ax.axvline(gx, color="#FF3B3055", lw=0.6 * s, zorder=4)
             ax.axhline(gx, color="#FF3B3055", lw=0.6 * s, zorder=4)
     else:
-        vg = vignette(ax, anno)
-        print(f"[annotate] vignette outside the subject box: centre "
-              f"({vg['centre'][0]:.3f}, {vg['centre'][1]:.3f}), half-extent "
-              f"({vg['half'][0]:.3f}, {vg['half'][1]:.3f}), ramp "
-              f"({vg['ramp'][0]:.3f}, {vg['ramp'][1]:.3f}), strength {vg['strength']:.2f}")
+        vg = vignette(ax, anno, width, height)
+        flag = "" if vg["r0"] >= vg["subject_radius"] - 1e-9 else "  <-- BITES INTO THE SUBJECT"
+        print(f"[annotate] vignette: centre ({vg['centre'][0]:.3f}, {vg['centre'][1]:.3f}), "
+              f"clear to {vg['r0']:.3f}, full at {vg['r1']:.3f}, stretch {vg['stretch']:.2f}, "
+              f"strength {vg['strength']:.2f}; the subject reaches {vg['subject_radius']:.3f}{flag}")
         title_floor, title_right = draw_title(ax, F, s, width, height, copy=dict(
             title=args.title or TITLE["title"],
             deck=(args.deck.replace("\\n", "\n") if args.deck else TITLE["deck"]),
