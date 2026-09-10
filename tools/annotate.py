@@ -356,6 +356,21 @@ def dot(ax, ax_x, ax_y, colour, s, *, dashed=False, zorder=7):
 
 
 DRAWN: list[tuple[str, str, object]] = []   # (role, group, artist) for the checker
+RENDERER = [None]     # set in build(); lets a run of type be measured as it is laid out
+
+
+def measure(t, width) -> float:
+    """Axes-fraction width of an already-created text artist.
+
+    Laying out a horizontal run needs the real advance of each item. Estimating
+    it as a constant per character is what made the sequence ribbon's arrows
+    sit at visibly unequal gaps: "Cooling" and "RCS 1-3" are the same length in
+    characters and not in ink.
+    """
+    r = RENDERER[0]
+    if r is None:
+        return 0.0
+    return t.get_window_extent(r).width / width
 
 
 def text(ax, x, y, body, fp, size, colour, s, *, ha="left", va="center", zorder=8,
@@ -418,7 +433,7 @@ def draw_title(ax, F, s, copy=None):
          shadow=False, role="deck")
 
 
-def draw_ribbon(ax, F, s):
+def draw_ribbon(ax, F, s, width):
     """The beam sequence, stated rather than implied.
 
     The callout ladder is ordered by geometry so its leaders cannot cross,
@@ -428,23 +443,25 @@ def draw_ribbon(ax, F, s):
     """
     y = LEGEND_BAND[1] - 0.014
     x = MARGIN
-    text(ax, x, y, "Beam sequence", F["sans_semi"], TYPE["credit"], INK_DIM, s,
-         va="center", shadow=False, role="legend:ribbon", group="ribbon")
-    x += 0.088
+    gap, tight = 0.020, 0.006
+    t = text(ax, x, y, "Beam sequence", F["sans_semi"], TYPE["credit"], INK_DIM, s,
+             va="center", shadow=False, role="legend:ribbon", group="ribbon")
+    x += measure(t, width) + gap
     for i, (n, name) in enumerate(RIBBON):
         if i:
-            text(ax, x, y, "\u2192", F["sans"], TYPE["credit"], INK_DIM, s,
+            t = text(ax, x, y, "\u2192", F["sans"], TYPE["credit"], INK_DIM, s,
+                     va="center", shadow=False, role="legend:ribbon", group="ribbon")
+            x += measure(t, width) + gap
+        t = text(ax, x, y, f"{n}", F["sans_semi"], TYPE["credit"], ACCENT["collider"], s,
                  va="center", shadow=False, role="legend:ribbon", group="ribbon")
-            x += 0.019
-        text(ax, x, y, f"{n}", F["sans_semi"], TYPE["credit"], ACCENT["collider"], s,
-             va="center", shadow=False, role="legend:ribbon", group="ribbon")
-        text(ax, x + 0.012, y, name, F["sans"], TYPE["credit"], INK, s,
-             va="center", shadow=False, role="legend:ribbon", group="ribbon")
-        x += 0.012 + 0.0058 * len(name) + 0.012
+        x += measure(t, width) + tight
+        t = text(ax, x, y, name, F["sans"], TYPE["credit"], INK, s,
+                 va="center", shadow=False, role="legend:ribbon", group="ribbon")
+        x += measure(t, width) + gap
     return x
 
 
-def draw_key(ax, F, s):
+def draw_key(ax, F, s, width):
     """The categorical key, on one line at the left of the legend band.
 
     A colour category with no key is decoration. Off-site carries a dash
@@ -453,14 +470,15 @@ def draw_key(ax, F, s):
     """
     y = LEGEND_BAND[0] + 0.024
     x = MARGIN
+    swatch, gap = 0.020, 0.030
     for accent, caption in KEY:
         colour = ACCENT[accent]
-        ax.plot([x, x + 0.020], [y, y], transform=ax.transAxes, color=colour,
+        ax.plot([x, x + swatch], [y, y], transform=ax.transAxes, color=colour,
                 lw=2.2 * s, solid_capstyle="butt", zorder=8,
                 dashes=(3, 2) if accent in DASHED else (None, None))
-        text(ax, x + 0.028, y, caption, F["sans"], TYPE["credit"], INK, s,
-             va="center", shadow=False, role="legend:key", group="key")
-        x += 0.028 + 0.0058 * len(caption) + 0.024
+        t = text(ax, x + swatch + 0.008, y, caption, F["sans"], TYPE["credit"], INK, s,
+                 va="center", shadow=False, role="legend:key", group="key")
+        x += swatch + 0.008 + measure(t, width) + gap
     return x
 
 
@@ -567,8 +585,15 @@ def draw_features(ax, F, s, anno, layout_name, width, height):
         y_name, y_metric = ly + 0.012, ly - 0.012
         leader(ax, ax_x, ax_y, lx, y_metric, colour, s, width, height, ha=ha,
                key=keys[0], dashed=dashed)
+        prev = (ax_x, ax_y)
         for k in keys[1:]:
-            dot(ax, feats[k]["x"], 1.0 - feats[k]["y"], colour, s, dashed=dashed)
+            px, py = feats[k]["x"], 1.0 - feats[k]["y"]
+            # a hairline tie, so the set reads as one callout rather than as a
+            # labelled anchor plus an unexplained dot elsewhere in the frame
+            ax.plot([prev[0], px], [prev[1], py], transform=ax.transAxes, color=colour,
+                    lw=0.5 * s, alpha=0.35, dashes=(2, 3), zorder=5)
+            dot(ax, px, py, colour, s, dashed=dashed)
+            prev = (px, py)
 
         label = g.get("label") or prim["label"]
         if g.get("stage"):
@@ -718,6 +743,10 @@ def build(args) -> int:
     F = load_fonts()
 
     fig = Figure(figsize=(width / dpi, height / dpi), dpi=dpi)
+    # attaching a canvas up front gives FreeType extents during layout, not
+    # just afterwards in the checker
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    RENDERER[0] = FigureCanvasAgg(fig).get_renderer()
     ax = fig.add_axes((0, 0, 1, 1))
     ax.set_axis_off()
     ax.imshow(img, extent=(0, 1, 0, 1), transform=ax.transAxes, aspect="auto", zorder=0,
@@ -742,8 +771,8 @@ def build(args) -> int:
             deck=(args.deck.replace("\\n", "\n") if args.deck else TITLE["deck"]),
         ))
         draw_footer(ax, F, s, anno)
-        draw_ribbon(ax, F, s)
-        draw_key(ax, F, s)
+        draw_ribbon(ax, F, s, width)
+        draw_key(ax, F, s, width)
         draw_scale_and_north(ax, F, s, anno, width, height)
         draw_features(ax, F, s, anno, args.layout, width, height)
 

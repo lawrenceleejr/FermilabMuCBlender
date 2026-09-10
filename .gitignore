@@ -4,6 +4,7 @@ assets/textures/
 assets/hdri/
 assets/starmap/
 assets/geo/
+!assets/plan/
 
 # Scratch renders, previews and inspection sheets
 out/

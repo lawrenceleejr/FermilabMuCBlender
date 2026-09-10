@@ -350,6 +350,38 @@ def _ring_pt(c, r, angle_deg, z=0.0, ry=None):
     return (c[0] + r * math.cos(a), c[1] + (ry or r) * math.sin(a), z)
 
 
+NNBSP = "\u202f"          # narrow no-break space: the SI/ISO 31-0 group separator
+
+
+def circ_km(radius_m: float) -> str:
+    """A ring's circumference as a km string, computed from the radius drawn.
+
+    The labels used to carry hand-typed metres -- "10 000 m", "35 000 m" -- next
+    to a km scale bar and a km2 area, which made the reader do the arithmetic
+    the figure exists to save them, and left the numbers free to drift from the
+    geometry. Deriving them here means a label cannot disagree with its ring.
+    """
+    return f"{2.0 * math.pi * radius_m / 1000.0:.3g}{NNBSP}km"
+
+
+def ellipse_circ_km(rx: float, ry: float) -> str:
+    """Ramanujan's approximation; good to ~1e-5 at these eccentricities."""
+    h = ((rx - ry) / (rx + ry)) ** 2
+    c = math.pi * (rx + ry) * (1.0 + 3.0 * h / (10.0 + math.sqrt(4.0 - 3.0 * h)))
+    return f"{c / 1000.0:.3g}{NNBSP}km"
+
+
+def polygon_area_km2(pts) -> float:
+    """Shoelace area of a closed ground polygon, in km2."""
+    a = 0.0
+    n = len(pts)
+    for i in range(n):
+        x0, y0 = pts[i][0], pts[i][1]
+        x1, y1 = pts[(i + 1) % n][0], pts[(i + 1) % n][1]
+        a += x0 * y1 - x1 * y0
+    return abs(a) / 2.0 / 1e6
+
+
 def annotation_anchors() -> dict[str, dict]:
     """What is worth labelling, with the copy and where the leader attaches.
 
@@ -367,7 +399,7 @@ def annotation_anchors() -> dict[str, dict]:
             ring=dict(center=MC_C, radius=MC_R, z=3.0),
             prefer=(0.34, 0.55),                       # left extreme of the arc, clear of everything
             label="Muon Collider Ring",
-            metric="10 000 m circumference",
+            metric=f"{circ_km(MC_R)} circumference",
             accent="collider",
         ),
         "detector_a": dict(
@@ -398,35 +430,35 @@ def annotation_anchors() -> dict[str, dict]:
             ring=dict(center=RCS_C, radius=RCS12_R, z=4.4),
             prefer=(0.42, 0.62),
             label="RCS 1 & 2",
-            metric="5 990 m shared tunnel",
+            metric=f"{circ_km(RCS12_R)} shared tunnel",
             accent="collider",
         ),
         "rcs3": dict(
             ring=dict(center=RCS_C, radius=RCS3_R, z=4.4),
             prefer=(0.28, 0.55),
             label="RCS 3",
-            metric="10 700 m",
+            metric=circ_km(RCS3_R),
             accent="collider",
         ),
         "rcs4": dict(
             ring=dict(center=MC_C, radius=RCS4_R, z=4.4),
             prefer=(0.12, 0.30),
             label="RCS 4",
-            metric="35 000 m — beyond the campus",
+            metric=f"{circ_km(RCS4_R)}, beyond the campus",
             accent="offsite",
         ),
         "tevatron": dict(
             ring=dict(center=TEV_C, radius=TEV_R, z=6.6),
             prefer=(0.62, 0.30),
             label="Tevatron Ring",
-            metric="6 283 m, tunnel reused",
+            metric=f"{circ_km(TEV_R)}, tunnel reused",
             accent="tevatron",
         ),
         "main_injector": dict(
             ring=dict(center=MI_C, radius=MI_RX, ry=MI_RY, z=6.6),
             prefer=(0.72, 0.52),
             label="Main Injector",
-            metric="3 320 m, existing",
+            metric=f"{ellipse_circ_km(MI_RX, MI_RY)}, existing",
             accent="tevatron",
         ),
         "wilson": dict(
@@ -440,7 +472,7 @@ def annotation_anchors() -> dict[str, dict]:
             z=2.0,
             prefer=(0.33, 0.74),                       # the near south-west edge
             label="Fermilab Site",
-            metric="27 km\u00b2 / 6,800 acres",
+            metric=f"{polygon_area_km2(CAMPUS_BOUNDARY):.0f}{NNBSP}km\u00b2 as drawn",
             accent="boundary",
         ),
     }

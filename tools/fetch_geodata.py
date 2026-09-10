@@ -33,7 +33,12 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 OUT_DIR = os.path.join(ROOT, "assets", "geo")
 OUT = os.path.join(OUT_DIR, "fermilab_site.json")
 
+# Ordered by how they actually behaved on this workload: private.coffee answered
+# every query that the other three timed out or shed. osm.ch is last because it
+# returns 200 with zero elements under load rather than erroring, which is what
+# the NONEMPTY set exists to catch.
 MIRRORS = [
+    "https://overpass.private.coffee/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass-api.de/api/interpreter",
     "https://overpass.osm.ch/api/interpreter",
@@ -64,8 +69,8 @@ def _bb(box):
 QUERIES = {
     "site": f"way({SITE_WAY}); out geom;",
     "accel": (
-        'way["name"~"Tevatron|Main Injector|Booster|Linac|Recycler|Ring Road",i]'
-        f'({_bb(NEAR_BOX)}); out geom;'
+        'way["name"~"Tevatron|Main Injector|Booster|Linac|Recycler|Ring Road|Kautz|Batavia Road"]'
+        f'({_bb(SITE_BOX)}); out geom;'
     ),
     "water": f'way["natural"="water"]({_bb(NEAR_BOX)}); out geom;',
     "wood": f'way["natural"="wood"]({_bb(NEAR_BOX)}); out geom;',
