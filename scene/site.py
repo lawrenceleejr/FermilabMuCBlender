@@ -331,8 +331,17 @@ def build_collider(col, concrete):
     (x0, y0), (x1, y1) = LINAC
     # 2.2 m radius: at ~8 km a thinner tube falls below a pixel and the label
     # would point at nothing. Emission plus bloom carries it from there.
-    C.tube_mesh("proton_driver_linac", [(x0, y0, 2.2), (x1, y1, 2.2)], 2.2, sides=8, col=col, material=linac)
-    C.box_object("target_hall", (40.0, 18.0, 10.0), (x0 + 0.62 * (x1 - x0), y0 + 22.0, 0), col=col, material=concrete)
+    # Seated on the terrain at both ends rather than at a fixed z: the ground is
+    # displaced by the DEM now, and the complex sits 3 km north-east of the
+    # origin where that is no longer near zero.
+    C.tube_mesh("proton_driver_linac",
+                [(x0, y0, geo.elev(x0, y0) + 2.2), (x1, y1, geo.elev(x1, y1) + 2.2)],
+                2.2, sides=8, col=col, material=linac)
+    # the pion production target, at the end of the chain rather than partway
+    # along the linac, which is where this box used to be put
+    tx, ty = TARGET_XY
+    C.box_object("target_hall", (44.0, 20.0, 11.0), (tx, ty, geo.elev(tx, ty)),
+                 col=col, material=concrete)
 
 
 def build_campus_boundary(col, *, width=11.0, strength=1.2, camera_strength=4.0, color=(1.0, 0.93, 0.82), z=0.7, posts=True):
