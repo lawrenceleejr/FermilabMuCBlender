@@ -18,28 +18,43 @@ from . import common as C
 # --- site plan (metres, relative to Wilson Hall) ---------------------------
 TEV_C, TEV_R = (1150.0, 0.0), 1000.0                 # Tevatron main ring (6.3 km)
 MI_C, MI_RX, MI_RY = (650.0, -1600.0), 560.0, 490.0    # Main Injector (3.3 km)
-MC_C, MC_R = (1300.0, -1150.0), 1590.0                # proposed 10 km collider ring
+MC_C = (1300.0, -1150.0)                              # proposed collider ring centre
 MC_IP_ANGLES = (120.0, 300.0)                         # detector halls (deg, opposite); 120 deg sits NE of Wilson Hall, in frame
 LINAC = ((-1000.0, -1600.0), (-225.0, -1600.0))       # proton driver linac, west of the site
 
 # --- the muon-collider accelerator chain -------------------------------------
-# Indicative siting of the stages a muon collider needs, in the order the beam
-# sees them: proton driver -> target -> muon cooling -> RCS acceleration ->
-# collider ring. Geometry is schematic but scaled to the real machines' sizes,
-# so the figure shows the actual footprint the complex would need on this site.
-PD_ACCUM_C, PD_ACCUM_R = (-250.0, -1770.0), 120.0     # accumulator ring
-PD_BUNCH_C, PD_BUNCH_R = (-250.0, -2010.0), 95.0      # buncher / compressor ring
-TARGET_XY = (-520.0, -1578.0)                          # pion production target hall
+# Ring sizes are taken from the IMCC "Tentative Parameter list for the
+# International Muon Collider Collaboration", 30 October 2023 (indico.cern.ch
+# event 1313021), Table 3.10 for the acceleration chain, Table 3.19 for the
+# collider and Table 3.2 for the proton-driver compressor. Radii are
+# circumference / 2 pi. Siting on the Fermilab campus is our own and
+# indicative; the machine sizes are the document's.
+#
+#   collider      C = 10 000 m  -> r = 1591.5 m   (10 TeV; the 3 TeV option is 4.5 km)
+#   RCS1, RCS2    C =  5 990 m  -> r =  953.3 m   (one tunnel, two machines)
+#   RCS3          C = 10 700 m  -> r = 1702.7 m
+#   RCS4          C = 35 000 m  -> r = 5570.4 m   (11 km across: does NOT fit the campus)
+#   compressor    C = 300-900 m -> r =   48-143 m
+TAU = 2.0 * math.pi
+MC_R = 10000.0 / TAU                         # 1591.5 m
+RCS12_R = 5990.0 / TAU                       # 953.3 m -- within 5 % of the Tevatron's 6 280 m
+RCS3_R = 10700.0 / TAU                       # 1702.7 m
+RCS4_R = 35000.0 / TAU                       # 5570.4 m
+PD_ACCUM_R = 900.0 / TAU                     # 143.2 m, compressor upper option
+PD_BUNCH_R = 600.0 / TAU                     # 95.5 m, mid-range
+PD_ACCUM_C = (-250.0, -1770.0)
+PD_BUNCH_C = (-250.0, -2010.0)
+TARGET_XY = (-520.0, -1578.0)                # pion production target hall
 
-# Ionisation cooling channel: a long chain of absorber/RF modules. ~600 m here.
+# Ionisation cooling: the document specifies 10 "B-type" rectilinear stages
+# S1-S10 plus A-stages, bunch merge and final cooling, but no overall length,
+# so the channel is drawn at an indicative 600 m and labelled by stage count.
 COOLING_PATH = [(-430.0, -1500.0), (-250.0, -1430.0), (-60.0, -1330.0),
                 (100.0, -1215.0), (215.0, -1080.0)]
 COOLING_MODULES = 20
 
-# Rapid-cycling synchrotrons that accelerate the muons before injection. RCS 1
-# reuses the Tevatron tunnel; these are the two new rings of the chain.
-RCS_C = TEV_C
-RCS_RADII = (1200.0, 1390.0)
+RCS_C = TEV_C                                # the RCS chain sits on the Tevatron's centre
+RCS_RADII = (RCS12_R, RCS3_R)                # the two that fit inside the campus
 
 SITE_X = (-1000.0, 3450.0)   # Kirk Rd .. Eola Rd
 SITE_Y = (-4000.0, 1800.0)   # south boundary .. Butterfield Rd
@@ -247,25 +262,31 @@ def build_campus_boundary(col, *, width=11.0, strength=1.2, camera_strength=4.0,
 
 
 def _build_rcs(col, concrete):
-    """The two new rapid-cycling synchrotron tunnels of the acceleration chain.
+    """The rapid-cycling synchrotron tunnels, at the IMCC circumferences.
 
-    Drawn violet-blue and dimmer than the collider so the nested rings are
-    tellable apart at a glance: the brightest ring is the machine that collides.
+    RCS1 and RCS2 share one 5 990 m tunnel, so it is drawn once and carries
+    both machines. RCS3 (10 700 m) gets its own ring. RCS4 (35 000 m) is 11 km
+    across and cannot be sited inside the campus at all, so it is drawn dimmer
+    and sweeping outside the boundary -- which is the honest picture, and the
+    single most useful thing this figure says about siting the full chain here.
     """
     tunnel = C.emissive_material("rcs_tunnel", (0.55, 0.52, 1.0), 1.2, camera_strength=7.0)
-    for i, r in enumerate(RCS_RADII, start=2):
-        C.tube_mesh(f"rcs_{i}_tunnel", C.circle_points(RCS_C, r, n=560, z=4.4), 0.7,
+    for name, r in (("rcs12", RCS12_R), ("rcs3", RCS3_R)):
+        C.tube_mesh(f"{name}_tunnel", C.circle_points(RCS_C, r, n=560, z=4.4), 0.7,
                     sides=6, col=col, material=tunnel, closed=True)
-    # RF straight sections: short brighter runs, one per ring, so the rings read
-    # as machines rather than as contour lines
+    # RF straights: short brighter runs so the rings read as machines, not contours
     rf = C.emissive_material("rcs_rf", (0.72, 0.70, 1.0), 2.5, camera_strength=16.0)
-    for i, r in enumerate(RCS_RADII, start=2):
+    for name, r in (("rcs12", RCS12_R), ("rcs3", RCS3_R)):
         for k in range(4):
             a0 = math.radians(90 * k + 12)
             a1 = a0 + math.radians(11)
             pts = [(RCS_C[0] + r * math.cos(a), RCS_C[1] + r * math.sin(a), 4.4)
                    for a in [a0 + (a1 - a0) * j / 8 for j in range(9)]]
-            C.tube_mesh(f"rcs_{i}_rf_{k}", pts, 1.5, sides=6, col=col, material=rf)
+            C.tube_mesh(f"{name}_rf_{k}", pts, 1.5, sides=6, col=col, material=rf)
+    # RCS4: beyond the campus, so dimmer and unlit-looking -- a note, not a claim
+    far = C.emissive_material("rcs4_tunnel", (0.46, 0.44, 0.92), 0.5, camera_strength=3.2)
+    C.tube_mesh("rcs4_tunnel", C.circle_points(MC_C, RCS4_R, n=900, z=4.4), 3.0,
+                sides=8, col=col, material=far, closed=True)
 
 
 def _build_proton_driver(col, concrete):
@@ -346,7 +367,7 @@ def annotation_anchors() -> dict[str, dict]:
             ring=dict(center=MC_C, radius=MC_R, z=3.0),
             prefer=(0.34, 0.55),                       # left extreme of the arc, clear of everything
             label="Muon Collider Ring",
-            metric="10.0 km circumference",
+            metric="10 000 m circumference",
             accent="collider",
         ),
         "detector_a": dict(
@@ -373,25 +394,39 @@ def annotation_anchors() -> dict[str, dict]:
             metric="ionisation cooling channel",
             accent="collider",
         ),
-        "rcs": dict(
-            ring=dict(center=RCS_C, radius=RCS_RADII[-1], z=4.4),
-            prefer=(0.30, 0.30),
-            label="RCS Tunnels",
-            metric="rapid-cycling acceleration",
+        "rcs12": dict(
+            ring=dict(center=RCS_C, radius=RCS12_R, z=4.4),
+            prefer=(0.42, 0.62),
+            label="RCS 1 & 2",
+            metric="5 990 m shared tunnel",
             accent="collider",
+        ),
+        "rcs3": dict(
+            ring=dict(center=RCS_C, radius=RCS3_R, z=4.4),
+            prefer=(0.28, 0.55),
+            label="RCS 3",
+            metric="10 700 m",
+            accent="collider",
+        ),
+        "rcs4": dict(
+            ring=dict(center=MC_C, radius=RCS4_R, z=4.4),
+            prefer=(0.12, 0.30),
+            label="RCS 4",
+            metric="35 000 m — beyond the campus",
+            accent="offsite",
         ),
         "tevatron": dict(
             ring=dict(center=TEV_C, radius=TEV_R, z=6.6),
-            prefer=(0.62, 0.67),
+            prefer=(0.62, 0.30),
             label="Tevatron Ring",
-            metric="6.3 km, tunnel reused",
+            metric="6 283 m, tunnel reused",
             accent="tevatron",
         ),
         "main_injector": dict(
             ring=dict(center=MI_C, radius=MI_RX, ry=MI_RY, z=6.6),
-            prefer=(0.50, 0.70),
+            prefer=(0.72, 0.52),
             label="Main Injector",
-            metric="3.3 km, existing",
+            metric="3 320 m, existing",
             accent="tevatron",
         ),
         "wilson": dict(

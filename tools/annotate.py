@@ -48,6 +48,7 @@ ACCENT = {
     "collider": "#7FD2FF",     # proposed: collider, RCS, cooling, proton driver
     "tevatron": "#F2B173",     # existing: Tevatron, Main Injector
     "boundary": "#F5F2EC",     # the site itself
+    "offsite": "#9E97D6",      # proposed but larger than the campus
     "neutral": "#E9E7E2",      # anything else, e.g. Wilson Hall
 }
 
@@ -73,18 +74,22 @@ LAYOUTS = {
     # Ordered down each column to match the order of the anchors' heights, which
     # is what keeps the dog-legs from crossing one another.
     "overview": {
-        # left column, ordered to match the anchors' heights so the legs do not cross
-        "detector_b":    dict(lx=0.145, ly=0.600, ha="right"),
-        "main_injector": dict(lx=0.145, ly=0.490, ha="right"),
-        "rcs":           dict(lx=0.145, ly=0.380, ha="right"),
-        "collider":      dict(lx=0.145, ly=0.270, ha="right"),
-        "boundary":      dict(lx=0.145, ly=0.160, ha="right"),
+        # Two columns of six, each ordered to match its anchors' heights so the
+        # dog-legs run parallel and never cross. Six slots on one ladder.
+        # left column
+        "rcs4":          dict(lx=0.135, ly=0.710, ha="right"),
+        "rcs3":          dict(lx=0.135, ly=0.596, ha="right"),
+        "collider":      dict(lx=0.135, ly=0.482, ha="right"),
+        "cooling":       dict(lx=0.135, ly=0.368, ha="right"),
+        "proton_driver": dict(lx=0.135, ly=0.254, ha="right"),
+        "boundary":      dict(lx=0.135, ly=0.140, ha="right"),
         # right column
-        "proton_driver": dict(lx=0.855, ly=0.620, ha="left"),
-        "cooling":       dict(lx=0.855, ly=0.505, ha="left"),
-        "wilson":        dict(lx=0.855, ly=0.390, ha="left"),
-        "detector_a":    dict(lx=0.855, ly=0.275, ha="left"),
-        "tevatron":      dict(lx=0.855, ly=0.160, ha="left"),
+        "tevatron":      dict(lx=0.865, ly=0.710, ha="left"),
+        "detector_a":    dict(lx=0.865, ly=0.596, ha="left"),
+        "wilson":        dict(lx=0.865, ly=0.482, ha="left"),
+        "rcs12":         dict(lx=0.865, ly=0.368, ha="left"),
+        "main_injector": dict(lx=0.865, ly=0.254, ha="left"),
+        "detector_b":    dict(lx=0.865, ly=0.140, ha="left"),
     },
     "northeast": {
         "wilson":        dict(lx=0.820, ly=0.660, ha="left"),
@@ -220,7 +225,7 @@ def axes_dir(vec_px, width, height):
 
 
 def draw_title(ax, F, s, copy=None):
-    scrim(ax, 0.0, 0.62, 0.62, 1.0, strength=0.80, direction="left")
+    scrim(ax, 0.0, 0.66, 0.62, 1.0, strength=0.70, direction="left")
     x = 0.038
     copy = copy or TITLE
     if copy.get("eyebrow"):

@@ -28,14 +28,20 @@ PRESETS = {
     # high NE overlook: the whole site laid out to the SW -- Wilson Hall left of centre and
     # the collider ring sweeping through the middle distance. Reads as a graphic, not a portrait.
     "overlook": dict(location=(760.0, 1020.0, 330.0), target=(500.0, -520.0, 40.0), lens=28.0, fstop=2.2),
-    # --- the whole complex: 4.36 km up, 6.0 km NNE of the site centroid, looking SSW down a
-    # 36 deg depression on a 24 mm lens. Chosen by projecting the campus boundary over a grid
-    # of (depression, distance, shift) and keeping the case that fills ~54 % of the frame
-    # width -- what the two label columns leave -- while holding the whole 4.5 x 5 km site
-    # clear of the title block and footer. The shift lens does the last of that framing, so
-    # the perspective stays put. Deep aperture: nothing here is close enough to defocus.
-    "overview": dict(location=(3277.0, 4538.0, 4359.0), target=(1225.0, -1100.0, 0.0), lens=24.0, fstop=8.0,
-                     shift_x=0.030, shift_y=-0.027),
+    # --- the whole complex, north up. Due south of the site centre at 4.6 km and 2.6 km up,
+    # looking due north on a 16 mm lens, so north on the ground projects exactly vertical.
+    # Chosen by projecting the campus boundary over a grid of lens, distance, height and
+    # shift: this fills the most frame width while keeping the whole site inside, the local
+    # ground angle near 30 deg, and about a fifth of the frame as sky.
+    # Needs a 3:2 frame -- 16:9 is too short to hold both sky and a 5 km-deep site, and gives
+    # half the sky for the same camera. Render at e.g. 1600x1067 or 3840x2560.
+    # NOTE: north up means looking away from the galactic centre, which is in the southern
+    # sky, so the Milky Way core is behind the camera. Use "overview_south" to keep it.
+    "overview": dict(location=(1225.0, -5700.0, 2600.0), target=(1225.0, -1100.0, 0.0),
+                     lens=16.0, fstop=8.0, shift_y=0.060),
+    # the earlier framing: looking south-south-west, galactic centre in frame, north down-right
+    "overview_south": dict(location=(3277.0, 4538.0, 4359.0), target=(1225.0, -1100.0, 0.0),
+                           lens=24.0, fstop=8.0, shift_x=0.030, shift_y=-0.027),
 
     # --- other vantages. Note that from the SW the galactic centre is behind the camera,
     # so these see the fainter anti-centre sky.
