@@ -244,6 +244,22 @@ projecting the real boundary and the largest rings through a pinhole model and
 scoring subject size, sky band, scale uniformity and the bands the annotation
 layer reserves. See the comment on the preset in `scene/camera_rig.py`.
 
+The model is validated against Blender's own projection dump and agrees to
+0.1 px. It did not always: for several rounds its `shift_y` sign was inverted,
+and because the scale and the horizontal axis matched to four decimals nothing
+looked wrong. What it cost was the sky — at the framing that error produced the
+true horizon sat above the top of the frame, so ground filled the picture and
+the bright specks along the top edge were distant street lamps, not stars.
+Anything this model asserts about a framing is worth checking against the dump.
+
+One constraint is worth stating because it drives the rest: the site outline
+must fall *between* the two callout columns, not merely avoid colliding with
+them. That is what sets the lens. Trimming the label copy to a measured 168 px
+widest block is what made it affordable — the columns then need 0.115 of the
+width each and the drawing gets the middle 64 %. Wanting the subject to fill
+the frame and wanting the text clear of it are opposed; this figure chooses the
+latter.
+
 ## What is in the scene
 
 | Layer | How it is built |
@@ -252,9 +268,10 @@ layer reserves. See the comment on the preset in `scene/camera_rig.py`.
 | Existing accelerators | Tevatron berm (r = 1000 m at (835, −735), fitted to the Outer Ring Road) with inner cooling-pond ring and a faint amber crest marker; Main Injector berm (r = 528 m at (−533, −1154), fitted to the Main Injector Pond arc) with its own marker |
 | Muon collider chain | The stages the machine needs, at the IMCC's own circumferences (see below): proton driver complex (linac, accumulator and compressor rings, service halls), pion target hall, an ionisation cooling channel drawn as discrete modules on a bright beamline, the RCS acceleration chain, and the collider ring with two detector halls at opposite interaction points. Ring sizes are the document's; siting on the campus is ours and indicative |
 | Site boundary | The real 36-vertex OSM outline (27.66 km² / 6834 acres) as a glowing ground ribbon with vertex markers, kept dimmer than the beamlines so the hierarchy reads collider > Tevatron > boundary; excluded from diffuse/glossy/volume rays so it marks the site without lighting it. Disable with `--no-boundary` |
-| Site | 60 km terrain on a 384² grid displaced by a real DEM (Grass004 x Ground037, Voronoi field parcels varying in brightness and hue, tallgrass tint); 431 mapped water bodies with Fresnel water and wind-stretched ripples, each laid flat at its own centroid's ground height; 6289 mapped road segments draped on the terrain; 490 pole lamps inside 1.8 km and 2581 bare emissive points out to 12 km, thinned with distance; ancillary buildings with hashed lit windows; ~27,000 instanced trees scattered on a jittered grid inside 114 mapped wood and forest polygons, trunks dropped beyond 3.5 km where they are sub-pixel (optional distant town-glow strips via `--towns`) |
+| Site | Terrain on a 384² grid over 60 km displaced by a real DEM, with a flat apron carrying the ground out to the 167 km horizon so its own edge does not show as a seam (Grass004 x Ground037, Voronoi field parcels varying in brightness and hue, tallgrass tint); 431 mapped water bodies with Fresnel water and wind-stretched ripples, each laid flat at its own centroid's ground height; 6289 mapped road segments draped on the terrain; pole lamps on every mapped road inside the real site boundary plus minor roads out to 6.5 km, then bare emissive points out to 12 km, thinned with distance; ancillary buildings with hashed lit windows; ~27,000 instanced trees scattered on a jittered grid inside 114 mapped wood and forest polygons, trunks dropped beyond 3.5 km where they are sub-pixel (optional distant town-glow strips via `--towns`) |
+| Fermilab Village | The real cluster on the east side of the campus, found as the densest group of mapped footprints inside the boundary (Users Center, Dormitories 1–4, Aspen East, around (3300, 550)). About 100 footprints carry warm 2850 K lit windows, with a denser LED street and lot grid, so the one inhabited part of the site reads as inhabited |
 | Atmosphere | Physical twilight sky plus the astronomically placed Milky Way and Chicago-area sky glow (see above); homogeneous aerial haze in an 80 km box; a 9 km ground-fog box with exponential height falloff and noise pools (anisotropic forward scattering); optional moon (`--moon`) |
-| Camera | Full-frame 24-40 mm, depth of field on Wilson Hall; presets `northeast` (default: over the reflecting pond toward the galactic core), `overview` (2.4 km up and 6.1 km south on a 21° depression at 24 mm, chosen by projection search — see the preset's comment), `cover` (portrait crop of the northeast vantage), `overlook`, `aerial`, `east`, `aerial_wide`, `high`, `low` (with bokeh prairie grass in the foreground), `portrait` |
+| Camera | Full-frame 24-40 mm, depth of field on Wilson Hall; presets `northeast` (default: over the reflecting pond toward the galactic core), `overview` (2.6 km up and 5.9 km south on a 24° depression at 18 mm, chosen by projection search — see the preset's comment), `cover` (portrait crop of the northeast vantage), `overlook`, `aerial`, `east`, `aerial_wide`, `high`, `low` (with bokeh prairie grass in the foreground), `portrait` |
 | Look | Cycles with adaptive sampling, path guiding, light tree, OpenImageDenoise; AgX "Punchy"; compositor bloom (two passes), faint chromatic aberration, vignette |
 
 ## Look-dev notes
