@@ -42,17 +42,31 @@ PRESETS = {
     # The subject used to occupy 11 % of the frame with 14 % of the height empty
     # dark ground below it, so the brightest, largest thing in the picture was
     # bare sky -- annotation cannot manufacture a hierarchy the tonal
-    # composition denies. This framing puts the site across 76 % of the width
-    # and 35 % of the frame area, leaves 5 % of dead foreground, and still keeps
-    # a 14 % band of sky, which is the whole reason for a wide lens here.
+    # composition denies.
     #
-    # 24 mm is a deliberate midpoint: 20 mm gives a larger subject but projects
-    # the far edge at 0.34 of the near edge's scale, and 50 mm is nearly uniform
-    # at 0.61 but shrinks the site to 24 % of frame. At 24 mm the ratio is 0.41.
-    # The target is the site-filler centre, so the chain sits in the middle of
-    # the campus; the old target predated the measured plan by about 1.5 km.
-    "overview": dict(location=(1522.0, -5500.0, 2800.0), target=(1522.0, 387.0, 0.0),
-                     lens=24.0, fstop=8.0, shift_y=-0.080),
+    # The model is validated against Blender's own projection dump and agrees
+    # to 0.1 px on every anchor. It did not always: for several rounds its
+    # shift_y sign was inverted, and because the scale and the horizontal axis
+    # matched to four decimals the whole time, nothing looked wrong. What it
+    # cost was the sky. At the framing that error produced, the true horizon sat
+    # at y_img -0.10 -- above the top of the frame -- so ground filled the
+    # picture and the bright specks along the top edge were distant street
+    # lamps, not stars.
+    #
+    # This framing is solved with the corrected model and puts the horizon
+    # genuinely in frame: 13 % of the height is sky, the site spans 28 % of the
+    # frame area between y_img 0.37 and 0.75, and the far edge projects at 0.39
+    # of the near edge's scale. The search also reserves the annotation's bands
+    # -- the bottom 24 % for the legend, ribbon and footer, the top 22 % for the
+    # title -- because those are constraints on the render, not something the
+    # annotation can fix afterwards.
+    #
+    # 24 mm is a deliberate midpoint. 14 mm gives a larger subject (37 %) but
+    # projects the far edge at only 0.24 of the near edge, which is the
+    # anisotropy the graphic scale then has to apologise for; the longer lenses
+    # trade area for uniformity almost linearly.
+    "overview": dict(location=(1522.0, -5750.0, 2200.0), target=(1522.0, 387.0, 0.0),
+                     lens=24.0, fstop=8.0, shift_y=-0.010),
     # the earlier framing: looking south-south-west, galactic centre in frame, north down-right
     # The Milky Way view, and the one place the three-way conflict is resolved
     # rather than dodged. The galactic centre sits due south at 19.1 deg

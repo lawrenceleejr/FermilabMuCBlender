@@ -59,7 +59,10 @@ from scene import atmosphere, camera_rig, common as C, postfx, site, wilson_hall
 
 # Cameras high/wide enough that the site-boundary ribbon reads as an outline on the ground
 # rather than a line across the horizon.
-BOUNDARY_CAMERAS = {"overview", "overlook", "high"}
+# The site outline reads from any vantage high enough to see the whole campus.
+# overview_south was omitted here by oversight -- it is the cover framing and
+# shows the site at the same scale as "overview", just from the north.
+BOUNDARY_CAMERAS = {"overview", "overview_south", "overlook", "high"}
 
 
 def parse_args():
