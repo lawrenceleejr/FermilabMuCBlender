@@ -392,7 +392,7 @@ def spaced(text: str, wide: bool = False) -> str:
 # --------------------------------------------------------------------------- #
 # helpers
 # --------------------------------------------------------------------------- #
-def vignette(ax, anno, width, height, *, strength=0.88, r0=0.20, r1=0.62,
+def vignette(ax, anno, width, height, *, strength=0.88, r0=0.16, r1=0.58,
              stretch=1.12, zorder=1):
     """A lens vignette: radial, centred on the subject, sized to spare it.
 
@@ -417,14 +417,23 @@ def vignette(ax, anno, width, height, *, strength=0.88, r0=0.20, r1=0.62,
     between so the derivative is zero at both ends and neither the start nor
     the top of the ramp shows as a ring.
 
-    The ramp is long and starts early -- 0.20 to 0.62 of the frame width, where
+    The ramp is long and starts early -- 0.16 to 0.58 of the frame width, where
     a first attempt used 0.285 to 0.44 -- because a short one reads as a
-    spotlight with the subject cut out of it rather than as a lens. Starting
-    inside the subject costs the subject almost nothing at this softness:
-    integrated over the site polygon the alpha averages 0.0008 and peaks at
-    0.043, so the site loses 0.08 % of its luminance on average and 4.3 % at
-    its single worst pixel, while the text columns lose 42-47 % and the title
-    band 50 %.
+    spotlight with the subject cut out of it rather than as a lens.
+
+    r1 is not 0.496. Scaling both radii down by 20 % together keeps the shape
+    and shortens the ramp to 0.336, and at that steepness the falloff becomes
+    visible as a ring: the seam test read 8.94 L against its 8.0 threshold, on
+    a noise floor of 5 to 6. Holding r0 at 0.16 and lengthening r1 instead
+    brings the bright centre in without that -- 0.54 measures 7.50, still above
+    the floor, and 0.58 measures 6.31, which is the floor.
+
+    Starting inside the subject has a price and it is worth writing down.
+    Integrated over the site polygon the alpha averages 0.0064 and peaks at
+    0.117: the site loses 0.64 % of its luminance on average, which is
+    invisible, and 11.7 % at its single worst pixel, out on the boundary
+    ribbon's far corner. At 0.20 to 0.62 those were 0.0008 and 0.043. The trade
+    is deliberate; if the site's corner ever looks dim, this is what to move.
 
     Alpha composites in display space, so nothing here can lift a value: the
     site keeps its own tone and everything outboard of it loses some.
