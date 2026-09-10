@@ -123,6 +123,86 @@ def make_camera(name, preset, focus_obj, *, col=None, aspect=(16, 9), lens=None,
     return obj
 
 
+# Where a camera move starts, per preset. Solved with the same validated
+# pinhole model as the framing itself, against two requirements: the whole site
+# must already be inside the frame at frame 1, so nothing pops in during the
+# move, and the change has to be felt without being a swoop.
+#
+# For "overview" the start is 1000 m lower and 600 m nearer, which puts the
+# camera at 16.8 deg of depression against the final 23.8 deg and shows 30 % of
+# the frame as sky against the final 20 %. The camera therefore rises and the
+# horizon settles downward -- a move toward the sky that eases into the still.
+# The lens and the shift do not change: this is a camera move, not a zoom, so
+# the perspective the framing was solved for is the perspective it lands on.
+APPROACH = {
+    "overview": dict(location=(1522.0, -4900.0, 1600.0)),
+    "overview_south": dict(location=(1522.0, 4600.0, 1050.0)),
+}
+
+
+def _action_fcurves(action):
+    """F-curves of an action, across Blender's two Action APIs.
+
+    Blender 4.4 replaced the flat `action.fcurves` with slotted actions --
+    layers, strips and channelbags -- and 5.x drops the old attribute entirely,
+    so reaching for `action.fcurves` raises AttributeError rather than
+    returning nothing. Both shapes are handled, and an unrecognised one is
+    reported instead of silently leaving the curves on their default
+    interpolation, which would give a linear move with no easing at all.
+    """
+    if hasattr(action, "fcurves"):
+        return list(action.fcurves)
+    out = []
+    for layer in getattr(action, "layers", []):
+        for strip in getattr(layer, "strips", []):
+            for bag in getattr(strip, "channelbags", []):
+                out.extend(bag.fcurves)
+    if not out:
+        raise RuntimeError(
+            "could not reach the camera action's f-curves on this Blender "
+            f"({bpy.app.version_string}); the move would render without easing")
+    return out
+
+
+def animate_approach(cam_obj, scene, preset, *, seconds=15.0, fps=30):
+    """Keyframe a camera move from its APPROACH pose into the preset pose.
+
+    Two keyframes on a sine ease-in-out rather than a long path: the brief asks
+    for subtle, and a two-pose ease is what reads as a slow settle rather than
+    a fly-through. Rotation is keyframed alongside position, computed by aiming
+    at the same target from each end, so the tilt change is exactly the
+    consequence of the rise and nothing else moves.
+
+    Returns (start_location, end_location, frames).
+    """
+    p = PRESETS[preset]
+    start = APPROACH.get(preset, {}).get("location")
+    if start is None:
+        raise KeyError(f"no APPROACH pose for camera preset {preset!r}; add one "
+                       "solved against the framing model rather than guessed")
+    frames = max(int(round(seconds * fps)), 2)
+    scene.frame_start = 1
+    scene.frame_end = frames
+    scene.render.fps = fps
+
+    for frame, loc in ((1, start), (frames, p["location"])):
+        cam_obj.location = loc
+        C.aim(cam_obj, p["target"])
+        cam_obj.keyframe_insert(data_path="location", frame=frame)
+        cam_obj.keyframe_insert(data_path="rotation_euler", frame=frame)
+
+    for fc in _action_fcurves(cam_obj.animation_data.action):
+        for kp in fc.keyframe_points:
+            kp.interpolation = "SINE"
+            kp.easing = "EASE_IN_OUT"
+        fc.update()
+    # leave the camera on its final pose so a still rendered from the same
+    # scene is unaffected by the animation data
+    cam_obj.location = p["location"]
+    C.aim(cam_obj, p["target"])
+    return start, p["location"], frames
+
+
 def add_foreground_grass(cam_obj, col, *, count=70, seed=5):
     """Big-bluestem seed heads 2-5 m in front of a low camera: soft bokeh
     silhouettes across the bottom of the frame."""

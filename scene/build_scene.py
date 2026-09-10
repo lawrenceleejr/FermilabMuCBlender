@@ -106,6 +106,9 @@ def parse_args():
     p.add_argument("--moon-energy", type=float, default=0.12)
     p.add_argument("--annotations", default="", help="write a JSON projection of the named site features for tools/annotate.py")
     p.add_argument("--save-blend", default="")
+    p.add_argument("--animate", type=float, default=0.0,
+                   help="render a camera-approach movie of this many seconds instead of a still")
+    p.add_argument("--fps", type=int, default=30, help="frame rate for --animate")
     p.add_argument("--no-render", action="store_true")
     p.add_argument("--threads", type=int, default=0)
     return p.parse_args(argv)
@@ -335,7 +338,32 @@ def main():
         print(f"[build] saved {blend_path}")
     print(f"[build] scene ready in {time.time() - t0:.1f}s")
 
-    if not args.no_render:
+    if args.animate:
+        # A frame sequence, not a video file. Cycles writing straight to a
+        # container gives no way to resume a run that dies at frame 300 of 450,
+        # and a GPU pass long enough to matter is exactly the kind that dies.
+        # ffmpeg turns the sequence into an mp4 in seconds afterwards.
+        start, end, frames = camera_rig.animate_approach(
+            cam, scene, args.camera, seconds=args.animate, fps=args.fps)
+        stem = os.path.splitext(os.path.abspath(args.out))[0]
+        os.makedirs(stem, exist_ok=True)
+        scene.render.filepath = os.path.join(stem, "frame_")
+        scene.render.image_settings.file_format = "PNG"
+        print(f"[render] animating {args.animate:.0f}s at {args.fps} fps "
+              f"= {frames} frames, {w}x{h}, {args.samples} spp")
+        print(f"[render]   from {tuple(round(v) for v in start)} "
+              f"to {tuple(round(v) for v in end)}")
+        print(f"[render]   frames -> {scene.render.filepath}####.png")
+        if not args.no_render:
+            t1 = time.time()
+            bpy.ops.render.render(animation=True)
+            dt = time.time() - t1
+            print(f"[render] {frames} frames in {dt / 60:.0f} min "
+                  f"({dt / max(frames, 1):.1f}s per frame)")
+            print(f"[render] encode with: ffmpeg -y -framerate {args.fps} "
+                  f"-i {scene.render.filepath}%04d.png -c:v libx264 -pix_fmt yuv420p "
+                  f"-crf 17 {stem}.mp4")
+    elif not args.no_render:
         os.makedirs(os.path.dirname(os.path.abspath(args.out)) or ".", exist_ok=True)
         t1 = time.time()
         bpy.ops.render.render(write_still=True)
