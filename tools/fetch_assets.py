@@ -47,13 +47,11 @@ HDRIS = [
 ]
 
 
-# ambientCG rejects urllib's default "Python-urllib/3.x" with a flat 403, on
-# every retry, so the fetcher looked like a network problem when it was a
-# header problem. Verified: no User-Agent gives 403, this one gives 200 and
-# 39.9 MB. NASA/GSFC and Poly Haven serve either way. The same lesson is
-# already applied in get_fonts.py and fetch_geodata.py; this file predated both
-# and never got it.
-UA = "Mozilla/5.0 (X11; Linux x86_64) FermilabMuCBlender/1.0 (+CC0 asset fetch)"
+# ambientCG answers urllib's default "Python-urllib/3.x" with 403, so every
+# request carries a browser UA rather than special-casing one host.
+UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
 
 
 def _get(url: str, retries: int = 4) -> bytes:
@@ -61,7 +59,7 @@ def _get(url: str, retries: int = 4) -> bytes:
     for i in range(retries):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": UA})
-            with urllib.request.urlopen(req, timeout=600) as r:  # noqa: S310
+            with urllib.request.urlopen(req, timeout=600) as r:
                 return r.read()
         except urllib.error.HTTPError as e:               # noqa: PERF203
             last = e

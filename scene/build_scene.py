@@ -80,6 +80,7 @@ def parse_args():
     p.add_argument("--sky", default="twilight", choices=["twilight", "milkyway", "nishita", "hdri"])
     p.add_argument("--sky-file", default=os.path.join(C.HDRI_DIR, "fermilab_night_sky.exr"), help="pre-oriented night-sky EXR from tools/make_sky_hdri.py (milkyway mode)")
     p.add_argument("--device", default="CPU", choices=["CPU", "GPU"], help="Cycles compute device (GPU auto-selects OPTIX/CUDA/HIP/METAL/ONEAPI)")
+    p.add_argument("--tile-size", type=int, default=2048, help="Cycles auto-tile size in px (Blender's own default is 2048); 0 asks for the whole frame in one tile. Fewer, larger tiles leave less unrendered if a pass is stopped early")
     p.add_argument("--moon", action="store_true", help="add a moon (off by default: it would wash out the Milky Way)")
     p.add_argument("--sun-elevation", type=float, default=None, help="sun elevation in degrees (negative = below horizon); default comes from the sky sidecar")
     p.add_argument("--sun-azimuth", type=float, default=None, help="sun compass azimuth (deg from north, clockwise); default comes from the sky sidecar")
@@ -322,7 +323,7 @@ def main():
         camera_rig.add_foreground_grass(cam, cols["cameras"])
 
     # --- render setup -------------------------------------------------------------
-    postfx.configure_cycles(scene, samples=args.samples, adaptive_threshold=args.adaptive_threshold, time_limit=args.time_limit, threads=args.threads, device=args.device)
+    postfx.configure_cycles(scene, samples=args.samples, adaptive_threshold=args.adaptive_threshold, time_limit=args.time_limit, threads=args.threads, device=args.device, tile_size=args.tile_size)
     postfx.configure_output(scene, width=w, height=h, path=os.path.abspath(args.out), exposure=args.exposure)
     postfx.build_compositor(scene)
 
@@ -382,8 +383,21 @@ def main():
     elif not args.no_render:
         os.makedirs(os.path.dirname(os.path.abspath(args.out)) or ".", exist_ok=True)
         t1 = time.time()
-        bpy.ops.render.render(write_still=True)
-        print(f"[render] wrote {args.out} in {time.time() - t1:.0f}s ({w}x{h}, {args.samples} spp)")
+        result = bpy.ops.render.render(write_still=True)
+        # Ctrl-C cancels the Cycles job and write_still then skips the file
+        # entirely, so a long pass that is stopped early leaves nothing behind.
+        # The partial buffer is still in Render Result, and it is a usable
+        # image -- noisier, but the frame. Saved beside the target under
+        # _partial so an interrupted run cannot overwrite a finished render.
+        if "CANCELLED" in result:
+            part = os.path.splitext(os.path.abspath(args.out))[0] + "_partial.png"
+            try:
+                bpy.data.images["Render Result"].save_render(filepath=part)
+                print(f"[render] interrupted after {time.time() - t1:.0f}s; partial -> {part}")
+            except Exception as e:  # noqa: BLE001
+                print(f"[render] interrupted after {time.time() - t1:.0f}s; no partial saved: {e}")
+        else:
+            print(f"[render] wrote {args.out} in {time.time() - t1:.0f}s ({w}x{h}, {args.samples} spp)")
 
 
 if __name__ == "__main__":

@@ -29,7 +29,7 @@ def enable_gpu() -> bool:
     return False
 
 
-def configure_cycles(scene, *, samples, adaptive=True, adaptive_threshold=0.012, time_limit=0, denoise=True, threads=0, device="CPU"):
+def configure_cycles(scene, *, samples, adaptive=True, adaptive_threshold=0.012, time_limit=0, denoise=True, threads=0, device="CPU", tile_size=2048):
     scene.render.engine = "CYCLES"
     cy = scene.cycles
     cy.device = "GPU" if device == "GPU" and enable_gpu() else "CPU"
@@ -51,6 +51,23 @@ def configure_cycles(scene, *, samples, adaptive=True, adaptive_threshold=0.012,
             cy.denoising_use_gpu = True
         except Exception:  # noqa: BLE001
             pass
+    # Auto-tiling splits anything past tile_size into a grid rendered one tile
+    # at a time, so a pass stopped part way through has whole tiles that were
+    # never sampled -- black, not merely noisy. Larger tiles mean fewer of
+    # them and so less of the frame lost to an interrupt.
+    #
+    # tile_size=0 asks for the whole frame at once, but that is a request
+    # rather than a guarantee: Cycles falls back to tiling regardless when the
+    # full-frame buffer does not fit in device memory. Measured at 3840x2560
+    # on a 32 GB M2 Max, this scene still tiled 2x2 with auto-tiling off, so
+    # do not rely on it to make an interrupted render whole. A --time-limit
+    # does that properly -- it ends the pass through the normal path, so every
+    # tile is written.
+    if tile_size == 0:
+        cy.use_auto_tile = False
+    else:
+        cy.use_auto_tile = True
+        cy.tile_size = tile_size
     cy.use_light_tree = True
     cy.use_guiding = True             # path guiding: big win for fog + many small lights on CPU
     cy.use_surface_guiding = True
