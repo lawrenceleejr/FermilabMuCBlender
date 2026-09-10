@@ -207,18 +207,38 @@ def fetch_layer(key: str, *, refetch=False) -> list:
         return w
     print(f"[geo] {key} ...")
     if key == "wide_roads":
+        # Each tile is cached on its own. The heavy tiles -- the ones over the
+        # Chicago metropolitan area -- time out repeatedly, and without per-tile
+        # caching a run that dies on tile 19 discards eighteen good ones. An
+        # empty result is treated as a failure and left uncached, because a
+        # loaded mirror answers 200 with zero elements rather than erroring,
+        # which had silently written an empty tile.
         w = []
         tiles = wide_tiles()
+        missing = []
         for n, (s, west, north, east) in enumerate(tiles, 1):
+            tp = os.path.join(OUT_DIR, f"_tile_wide_{n:02d}.json")
+            if os.path.exists(tp) and not refetch:
+                part = json.load(open(tp))
+                w.extend(part)
+                print(f"    tile {n}/{len(tiles)}: cached ({len(part)} ways)")
+                continue
             body = ('way["highway"~"^(motorway|trunk|primary)$"]'
                     f'({s:.4f},{west:.4f},{north:.4f},{east:.4f}); out geom;')
             try:
-                part = ways(overpass(body, timeout=180, tries=2))
+                part = ways(overpass(body, timeout=180, tries=2, nonempty=True))
             except Exception as e:                       # noqa: BLE001
                 print(f"    tile {n}/{len(tiles)} failed: {e}")
+                missing.append(n)
                 continue
+            os.makedirs(OUT_DIR, exist_ok=True)
+            with open(tp, "w") as fh:
+                json.dump(part, fh, separators=(",", ":"))
             w.extend(part)
             print(f"    tile {n}/{len(tiles)}: {len(part)} ways (running {len(w)})")
+        if missing:
+            print(f"    tiles still missing: {missing} -- rerun "
+                  f"`--layer wide_roads` to fill them in")
     else:
         res = overpass(QUERIES[key], nonempty=key in NONEMPTY)
         w = ways(res)
