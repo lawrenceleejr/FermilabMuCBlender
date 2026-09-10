@@ -839,6 +839,12 @@ def build_street_lights(col, *, near=1800.0, mid=16000.0, far=80500.0,
     head_h.materials.append(horizon)
     rng = random.Random(41)
     n_near = n_mid = n_far = 0
+    # Candidates are collected first and thinned by an even stride if they
+    # exceed the cap. Placing them as they came and stopping at the cap
+    # truncates by iteration order, which is the order the ways happen to sit
+    # in the baked file -- so a sector could go dark for no reason but its
+    # position in a JSON array.
+    mid_pts, far_pts = [], []
 
     on_site = CAMPUS_BOUNDARY
     for layer, spacing, radius in (("major_roads", 105.0, mid),
@@ -860,28 +866,39 @@ def build_street_lights(col, *, near=1800.0, mid=16000.0, far=80500.0,
                 if d <= near:
                     lamp(x, y + (6.0 if i % 2 else -6.0), "sodium")
                     n_near += 1
-                elif n_mid < mid_cap:
+                else:
                     # thin with distance: a far road is a dotted line of light
                     if d > near * 2 and rng.random() > 0.6:
                         continue
-                    C.instance(f"lamp_mid_{n_mid}", head_far, col=col,
-                               location=(x, y, geo.elev(x, y) + 9.2))
-                    n_mid += 1
+                    mid_pts.append((x, y))
 
     # 50-mile register, on the tiled trunk network
     for w in geo.ways("wide_roads", min_pts=2, radius=far + 2000.0):
         pts = [(p[0], p[1]) for p in w["pts"]]
         for x, y in _resample(pts, 260.0):
             d = math.hypot(x, y)
-            if d <= mid or d > far or n_far >= far_cap:
+            if d <= mid or d > far:
                 continue
             # spacing grows with distance: keep roughly one point per unit of
             # projected length rather than per unit of ground length
             if rng.random() > min(1.0, (mid / d) ** 0.9):
                 continue
-            C.instance(f"lamp_h_{n_far}", head_h, col=col,
-                       location=(x, y, geo.elev(x, y) + 9.2))
-            n_far += 1
+            far_pts.append((x, y))
+
+    def stride(items, cap):
+        if len(items) <= cap:
+            return items
+        step = len(items) / cap
+        return [items[int(i * step)] for i in range(cap)]
+
+    for j, (x, y) in enumerate(stride(mid_pts, mid_cap)):
+        C.instance(f"lamp_mid_{j}", head_far, col=col,
+                   location=(x, y, geo.elev(x, y) + 9.2))
+        n_mid += 1
+    for j, (x, y) in enumerate(stride(far_pts, far_cap)):
+        C.instance(f"lamp_h_{j}", head_h, col=col,
+                   location=(x, y, geo.elev(x, y) + 9.2))
+        n_far += 1
 
     # a denser lot/path grid through the Village itself
     for k in range(140):
@@ -892,7 +909,8 @@ def build_street_lights(col, *, near=1800.0, mid=16000.0, far=80500.0,
         n_near += 1
     print(f"[site] street lights (all sodium): {n_near} poles on campus and inside "
           f"{near / 1000:.1f} km, {n_mid} points to {mid / 1000:.0f} km, "
-          f"{n_far} horizon points to {far / 1000:.0f} km ({far / 1609.344:.0f} miles)")
+          f"{n_far} of {len(far_pts)} horizon points to {far / 1000:.0f} km "
+          f"({far / 1609.344:.0f} miles)")
     return lamp
 
 
