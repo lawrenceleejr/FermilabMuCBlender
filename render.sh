@@ -53,7 +53,12 @@ for a in "$@"; do
       if [[ $res_set -eq 0 ]]; then args+=(--res "$prev_res"); res_set=1; fi ;;
     --gpu)   args+=(--device GPU) ;;
     --final)
-      args+=(--samples 1024 --adaptive-threshold 0.005)
+      # The 1 % noise threshold is what ends a final render, not the sample
+      # count. Cycles stops sampling a pixel once its estimated noise falls
+      # below adaptive_threshold, so 1024 is a ceiling and a backstop rather
+      # than a target -- most pixels converge well before it, and the log
+      # reports what was actually spent.
+      args+=(--samples 1024 --adaptive-threshold 0.01)
       if [[ $res_set -eq 0 ]]; then args+=(--res "$final_res"); res_set=1; fi ;;
     --both|--movie) ;;                    # handled below, not forwarded
     *) args+=("$a") ;;

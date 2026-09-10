@@ -46,8 +46,14 @@ blender -b --python tools/make_sky_hdri.py -- --res 8k   # -> assets/hdri/fermil
 
 For the 4K stills use `--res 16k` when building the sky so the star field stays
 sharp at 100 %. `--gpu` prints the backend and device names it selected; if it
-reports no GPU it falls back to CPU rather than failing. Sampling is adaptive,
-so 1024 is an upper bound -- expect well under that on most pixels.
+reports no GPU it falls back to CPU rather than failing.
+
+A final render **ends on the noise threshold, not on the sample count**:
+`--final` sets Cycles' adaptive threshold to 0.01, so each pixel stops being
+sampled once its estimated noise falls below 1 %. The 1024 samples are a
+ceiling and a backstop — most pixels converge well before it. Lower the
+threshold for a cleaner, slower frame (`--adaptive-threshold 0.005`), raise it
+for a faster, grainier one.
 
 `render.sh` forwards flags to `scene/build_scene.py`; read its docstring for
 the full list (camera presets, sky mode, fog density, exposure, samples,
