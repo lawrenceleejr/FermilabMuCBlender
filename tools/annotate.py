@@ -567,7 +567,7 @@ def axes_dir(vec_px, width, height):
     return dx_px / width, -dy_px / height
 
 
-def draw_title(ax, F, s, height, copy=None):
+def draw_title(ax, F, s, width, height, copy=None):
     """Title block. No institutional eyebrow -- it implied an official document,
     and dropping it lets the title hold the top of the frame on its own.
 
@@ -610,7 +610,10 @@ def draw_title(ax, F, s, height, copy=None):
     # bottom is 0.769: the moment the deck took a second line the constant was
     # wrong, and the first thing the ladder did was put a label through it.
     r = RENDERER[0]
-    return (t.get_window_extent(r).y0 / height) if r is not None else TITLE_FLOOR
+    if r is None:
+        return TITLE_FLOOR, 1.0
+    bb = t.get_window_extent(r)
+    return bb.y0 / height, max(bb.x1, ax.transAxes.transform((x + 0.150, 0))[0]) / width
 
 
 def draw_key(ax, F, s, width):
@@ -773,28 +776,8 @@ def _angle_for(placed, feats, width, height):
     return min(max(max(need) if need else 45.0, lo), hi)
 
 
-def _count_crossings(placed, feats, width, height, angle):
-    """Leader-on-leader crossings for a candidate layout."""
-    was, LEADER_ANGLE[0] = LEADER_ANGLE[0], angle
-    try:
-        paths = []
-        for _g, keys, lx, ly, ha, tx, _lines, _d in placed:
-            f = feats[keys[0]]
-            pth = leader_path(f["x"], 1.0 - f["y"], lx, ly - 0.008, ha,
-                              width, height, tx)
-            if pth:
-                paths.append([(pth[0], pth[1]), (pth[1], pth[2])])
-    finally:
-        LEADER_ANGLE[0] = was
-    hits = 0
-    for i in range(len(paths)):
-        for j in range(i + 1, len(paths)):
-            if any(_crosses(a, b, c, d) for a, b in paths[i] for c, d in paths[j]):
-                hits += 1
-    return hits
-
-
-def draw_features(ax, F, s, anno, layout_name, width, height, *, ceil=None):
+def draw_features(ax, F, s, anno, layout_name, width, height, *,
+                  title_floor=TITLE_FLOOR, title_right=1.0):
     """Place the callout ladders: side from the geometry, order from the beam.
 
     Two things are settled separately here, and conflating them is what earlier
@@ -818,121 +801,60 @@ def draw_features(ax, F, s, anno, layout_name, width, height, *, ceil=None):
         if keys:
             groups.append((g, keys))
 
-    # Which column, by search rather than by rule.
+    # Which column, by rule.
     #
-    # Ranking the anchors by x and halving gives each callout the side it leans
-    # toward, and that is the right instinct: it keeps every leader short and
-    # off the drawing. But it takes no account of the reading order, and with
-    # the ladder ordered by beam stage the two requirements collide. In this
-    # camera they collide unavoidably: the detector halls are the highest thing
-    # on screen and the *last* stage of the beam, so any column holding them
-    # reads top-to-bottom in one order and bottom-to-top in the other, and a
-    # leader has to cross. Partitioning the five stages into two columns that
-    # are each monotonic in both is provably impossible here -- stage 5 has the
-    # highest anchor of all, so it would have to come first in its column.
-    #
-    # So the split is chosen instead of derived: every balanced two-way
-    # assignment is laid out, its leaders counted for crossings, and the one
-    # with none wins -- breaking ties on total leader length, which recovers
-    # the "short leaders on the near side" property the x-rank split had.
-    # 2^n assignments at n = 8 is 256 layouts of pure arithmetic.
-    def _layout(assign):
-        out, total, over, first = [], 0.0, 0.0, {}
-        for side in ("left", "right"):
-            items = [g for g, a in zip(groups, assign) if a == side]
-            if not items:
-                return None, 1e9, 1e9, 1e9, 1e9
-            lx = COL_X[0] if side == "left" else COL_X[1]
-            ha = "right" if side == "left" else "left"
-            tx = lx + (0.010 if ha == "left" else -0.010)
-            avail = (tx - MARGIN) if ha == "right" else (1.0 - MARGIN - tx)
-            # beam order, then the unstaged context below it
-            items = sorted(items, key=lambda t: (t[0].get("stage") or 99,
-                                                 -(1.0 - feats[t[1][0]]["y"])))
-            # Wrapped in design space -- at s = 1 against SCALE_BASE -- not at
-            # the output scale. A glyph's advance is not exactly linear in point
-            # size once hinting and rounding are in it, so measuring at the
-            # output size broke a line in a different place at 800 px than at
-            # 1600, which changed the line counts, which changed the gaps,
-            # which made the search choose a different column split and refuse
-            # the figure at one resolution while passing it at the other.
-            wrapped = [fit_lines(ax, g.get("purpose") or "", F["sans"],
-                                 TYPE["metric"], 1.0, avail, SCALE_BASE)
-                       for g, _ in items]
-            gaps = [SUB_GAP_ABOVE + len(w) * SUB_LEAD + SUB_GAP_BELOW for w in wrapped]
-            anchors = [1.0 - feats[keys[0]]["y"] for _, keys in items]
-            ys, deficit = place_rungs_in_order(anchors, gaps, ceil=ceil)
-            over += deficit
-            for (g, keys), ly, lines in zip(items, ys, wrapped):
-                out.append((g, keys, lx, ly, ha, tx, lines,
-                            feats[keys[0]].get("depth_m", 0.0)))
-                total += abs(lx - feats[keys[0]]["x"]) + abs(ly - (1.0 - feats[keys[0]]["y"]))
-            first[side] = min([g.get("stage") or 99 for g, _ in items])
-        # The ladder reads in beam order down a column, but a reader meets the
-        # left column first, so the beam has to start there: an otherwise good
-        # split put stages 4 and 5 on the left and 1 to 3 on the right, which
-        # reads 4, 5, 1, 2, 3.
-        backwards = 1 if first["left"] > first["right"] else 0
-        return out, over, _angle_for(out, feats, width, height), backwards, total
+    # This was a 256-candidate search over every balanced split, scored on
+    # overflow, kink angle and reading order, because the right assignment was
+    # not obvious from the geometry. It is not a geometric question at all: the
+    # beam starts at the top left and works down, so the early stages take the
+    # left column and the rest take the right, and the context items -- which
+    # are not part of the chain and should not interrupt it -- all sit on the
+    # right below the stages. A rule that states the reading order beats a
+    # search that infers it, and it cannot land somewhere surprising when the
+    # camera moves.
+    chain = sorted((g for g in groups if g[0].get("stage")),
+                   key=lambda t: t[0]["stage"])
+    context = sorted((g for g in groups if not g[0].get("stage")),
+                     key=lambda t: -(1.0 - feats[t[1][0]]["y"]))
+    cut = (len(chain) + 1) // 2
+    columns = {"left": chain[:cut], "right": chain[cut:] + context}
 
-    def over_cost(v):
-        # 0.002, not 0.004. The tolerance is spent out of the clearance between
-        # the top rung and the deck above it, and at 0.004 it spent more than
-        # there was: the label's own box reaches 0.0127 above its rung, so a
-        # 0.004 overrun left 0.0053 where the collision pad wants 0.0056 -- and
-        # the 1600 px figure, which wraps to slightly different line counts and
-        # so chooses a different split, landed exactly there.
-        return round(max(0.0, v - 0.002), 4)
+    placed = []
+    for side, items in columns.items():
+        if not items:
+            continue
+        lx = COL_X[0] if side == "left" else COL_X[1]
+        ha = "right" if side == "left" else "left"
+        tx = lx + (0.010 if ha == "left" else -0.010)
+        avail = (tx - MARGIN) if ha == "right" else (1.0 - MARGIN - tx)
+        # Only a column that sits *under* the title block is limited by it. The
+        # title and deck reach x 0.535, so the right column is clear of them and
+        # its ladder may start as high as the top margin allows; constraining it
+        # to the deck's bottom cost it 0.073 of height it did not owe, and
+        # reported an overrun for a collision that could not happen.
+        near_title = (tx - avail) < title_right if ha == "right" else tx < title_right
+        top = (title_floor - 0.030) if near_title else (1.0 - MARGIN - 0.020)
+        # Wrapped in design space -- at s = 1 against SCALE_BASE -- not at the
+        # output scale. A glyph's advance is not exactly linear in point size
+        # once hinting and rounding are in it, so measuring at the output size
+        # broke a line in a different place at 800 px than at 1600, which
+        # changed the line counts, which changed the gaps, and the figure was
+        # refused at one resolution while passing at the other.
+        wrapped = [fit_lines(ax, g.get("purpose") or "", F["sans"],
+                             TYPE["metric"], 1.0, avail, SCALE_BASE)
+                   for g, _ in items]
+        gaps = [SUB_GAP_ABOVE + len(w) * SUB_LEAD + SUB_GAP_BELOW for w in wrapped]
+        anchors = [1.0 - feats[keys[0]]["y"] for _, keys in items]
+        ys, deficit = place_rungs_in_order(anchors, gaps, ceil=top)
+        if deficit > 0.002:
+            print(f"[annotate] the {side} column overruns its ceiling by "
+                  f"{deficit:.3f} of frame height. Shorten a purpose line.")
+        for (g, keys), ly, lines in zip(items, ys, wrapped):
+            placed.append((g, keys, lx, ly, ha, tx, lines,
+                           feats[keys[0]].get("depth_m", 0.0)))
 
-    n = len(groups)
-    lo_n, hi_n = max(1, n // 2 - 1), (n + 1) // 2 + 1
-    best = (None, 1e9, 1e9, 1e9, 1e9, None)
-    x_rank = sorted(range(n), key=lambda i: feats[groups[i][1][0]]["x"])
-    default = ["left" if x_rank.index(i) < (n + 1) // 2 else "right" for i in range(n)]
-    for bits in range(1 << n):
-        assign = ["left" if bits >> i & 1 else "right" for i in range(n)]
-        if not lo_n <= assign.count("left") <= hi_n:
-            continue
-        out, over, angle, backwards, total = _layout(assign)
-        if out is None:
-            continue
-        # Two things are being minimised, in this order.
-        #
-        # Overflow first, and as a magnitude rather than as a flag: as a flag it
-        # collapsed a 0.0007 overrun and a 0.136 one into the same bucket, so
-        # when every split overflowed a little the search ranked by the second
-        # key and picked one that put four purpose lines through the deck. A
-        # sub-pixel overrun is free; past that nothing outranks it, because
-        # overlapping type is the one fault with no reading at all.
-        #
-        # Then the steepest angle any callout needs. The angle constraint is
-        # one-sided -- a leader can always take a *steeper* diagonal than it
-        # needs, since that only moves its knee nearer the anchor -- so a single
-        # figure-wide angle equal to the steepest requirement fits every leader
-        # with nothing clamped. Minimising that maximum is therefore how the
-        # figure gets one shallow, consistent kink instead of one leader at 86
-        # degrees dragging the rest up with it.
-        #
-        # Crossings are deliberately not in the key. They were, and optimising
-        # them cost either the beam order or the shared angle; a crossed pair of
-        # leaders is legible and an inconsistent set of kinks is not.
-        # Reading order outranks the angle's value. What was asked for is that
-        # the kinks be *consistent*, and they are consistent at whatever angle
-        # comes out, so the magnitude is only a preference for a shallow one --
-        # while a ladder that runs 4, 5, 1, 2, 3 is simply wrong. Ranking the
-        # angle first left it there, because the angle bottoms out at its 30
-        # degree floor for many splits and the tie was never broken.
-        if ((over_cost(over), backwards, round(angle, 1), total)
-                < (over_cost(best[1]), best[3], round(best[2], 1), best[4])):
-            best = (out, over, angle, backwards, total, assign)
-    if best[0] is None:                              # no balanced split at all
-        best = (*_layout(default), default)
-    placed, over, angle = best[0], best[1], best[2]
-    if over > 1e-6:
-        print(f"[annotate] no column split fits: the best overruns the title "
-              f"block by {over:.3f} of frame height. Shorten a purpose line.")
-    LEADER_ANGLE[0] = angle
-    if angle >= LEADER_ANGLE_LIMITS[1] - 1e-6:
+    LEADER_ANGLE[0] = _angle_for(placed, feats, width, height)
+    if LEADER_ANGLE[0] >= LEADER_ANGLE_LIMITS[1] - 1e-6:
         print(f"[annotate] WARNING: the shared dog-leg angle hit its "
               f"{LEADER_ANGLE_LIMITS[1]:.0f} deg ceiling, so at least one leader "
               f"is clamped steeper than the rest. Widen the drawing corridor or "
@@ -1205,7 +1127,7 @@ def build(args) -> int:
             ax.axvline(gx, color="#FF3B3055", lw=0.6 * s, zorder=4)
             ax.axhline(gx, color="#FF3B3055", lw=0.6 * s, zorder=4)
     else:
-        title_floor = draw_title(ax, F, s, height, copy=dict(
+        title_floor, title_right = draw_title(ax, F, s, width, height, copy=dict(
             title=args.title or TITLE["title"],
             deck=(args.deck.replace("\\n", "\n") if args.deck else TITLE["deck"]),
         ))
@@ -1214,7 +1136,8 @@ def build(args) -> int:
         draw_scale(ax, F, s, anno, width, height)
         # the ladder's top rung has to clear the deck by its own half-height
         # plus the collision pad, not by a round number
-        draw_features(ax, F, s, anno, args.layout, width, height, ceil=title_floor - 0.030)
+        draw_features(ax, F, s, anno, args.layout, width, height,
+                      title_floor=title_floor, title_right=title_right)
 
     hits = check_collisions(fig, ax, width, height, s=s) if not args.debug else []
     if hits and args.strict:
