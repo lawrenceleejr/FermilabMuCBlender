@@ -53,20 +53,24 @@ PRESETS = {
     # picture and the bright specks along the top edge were distant street
     # lamps, not stars.
     #
-    # This framing is solved with the corrected model and puts the horizon
-    # genuinely in frame: 13 % of the height is sky, the site spans 28 % of the
-    # frame area between y_img 0.37 and 0.75, and the far edge projects at 0.39
-    # of the near edge's scale. The search also reserves the annotation's bands
-    # -- the bottom 24 % for the legend, ribbon and footer, the top 22 % for the
-    # title -- because those are constraints on the render, not something the
-    # annotation can fix afterwards.
+    # Re-solved after the brief changed: zoom out so the whole campus reads and
+    # the callouts cannot sit on the site outline, tilt up for more sky.
     #
-    # 24 mm is a deliberate midpoint. 14 mm gives a larger subject (37 %) but
-    # projects the far edge at only 0.24 of the near edge, which is the
-    # anisotropy the graphic scale then has to apologise for; the longer lenses
-    # trade area for uniformity almost linearly.
-    "overview": dict(location=(1522.0, -5750.0, 2200.0), target=(1522.0, 387.0, 0.0),
-                     lens=24.0, fstop=8.0, shift_y=-0.010),
+    # The binding constraint is now that the *boundary polygon itself* must fall
+    # between the two callout columns. Trimming the label copy is what made that
+    # affordable: the widest text block is 168 px, so the columns need only
+    # 0.115 of the width each and the drawing gets the middle 64 % rather than
+    # 48 %. Solved at 18 mm from (1522, -5500, 2600): 23.8 deg depression, the
+    # outline inside u 0.21..0.77, the site between y_img 0.43 and 0.75, 20 % of
+    # the height sky, and the far edge at 0.40 of the near edge's scale.
+    #
+    # The site is deliberately smaller than it was -- 19 % of frame area against
+    # 28 % -- because "zoom out so the text does not block it" and "make the
+    # subject fill the frame" are opposed, and the brief chose the former.
+    # 16 mm gives the same area at 0.36 uniformity, 14 mm at 0.35; 18 mm is the
+    # widest that keeps the projection honest.
+    "overview": dict(location=(1522.0, -5500.0, 2600.0), target=(1522.0, 387.0, 0.0),
+                     lens=18.0, fstop=8.0, shift_y=0.020),
     # the earlier framing: looking south-south-west, galactic centre in frame, north down-right
     # The Milky Way view, and the one place the three-way conflict is resolved
     # rather than dodged. The galactic centre sits due south at 19.1 deg

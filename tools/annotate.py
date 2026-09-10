@@ -44,7 +44,12 @@ FONT_DIR = os.path.join(ROOT, "assets", "fonts")
 # confirms which of the three a label names.
 INK = "#F2F0EB"
 INK_DIM = "#9AA3AF"
-LEADER = "#8D96A3"        # leaders are apparatus, not data: one neutral grey
+# Leaders stay one neutral grey -- apparatus, not data, so they never compete
+# with the accelerator geometry for hue. But at 0.6 px and 55 % alpha they had
+# gone too far the other way and were barely findable, so the weight and
+# opacity come back up: the elbow has to be traceable from label to subject at
+# a glance, which is the whole point of a dog-leg.
+LEADER = "#C3CBD6"
 ACCENT = {
     "collider": "#7FD2FF",     # proposed: collider, RCS, cooling, proton driver
     "tevatron": "#F2B173",     # existing plant, reused
@@ -118,7 +123,7 @@ CHAIN = [
     dict(keys=["proton_driver"], stage=1),
     dict(keys=["cooling"], stage=2),
     dict(keys=["rcs12", "rcs3"], stage=3, label="RCS 1\u20133",
-         metric="rapid-cycling, 5.99 and 10.7\u202fkm"),
+         metric="5.99 / 5.99 / 10.7\u202fkm"),
     dict(keys=["rcs4"], stage=4),
     dict(keys=["collider"], stage=5),
     dict(keys=["detector_a", "detector_b"], stage=6, label="Detector halls",
@@ -232,11 +237,14 @@ TITLE = dict(
 # numbers came from, what the drawing is not, and the credits the data licences
 # ask for. The instant, solar geometry and lens that used to sit here were
 # detail a site plan's reader does not need.
-PROVENANCE = ("Machine parameters: IMCC Tentative Parameter List, 30 Oct 2023 (10 TeV option); "
-              "the final synchrotron is sized to the site at 14.5 km rather than the 35 km reference, "
-              "which needs more acceleration turns. Siting indicative, not an engineering study.")
-CREDIT = ("Procedural Cycles render \u00b7 terrain and site data \u00a9 OpenStreetMap contributors (ODbL) "
-          "and AWS Terrain Tiles \u00b7 star field NASA/GSFC SVS Deep Star Maps 2020, Gaia DR2 (ESA/Gaia/DPAC)")
+# Cut to what the figure cannot do without: the source of the ring sizes, one
+# word that the siting is indicative, and the attributions the data licences
+# require. Everything else that used to sit here -- the instant, the solar
+# geometry, the lens, the acceleration-turns caveat -- was detail a site plan's
+# reader does not need, and it crowded the frame.
+PROVENANCE = "Ring sizes: IMCC parameter list, 2023. Siting indicative."
+CREDIT = ("\u00a9 OpenStreetMap contributors (ODbL) \u00b7 AWS Terrain Tiles \u00b7 "
+          "star field NASA/GSFC, Gaia DR2 (ESA/Gaia/DPAC)")
 
 # One margin and one set of horizontal bands, so every block aligns to the same
 # edges and the label spacing is computed rather than typed.
@@ -251,13 +259,18 @@ GUTTER = 0.030               # the common knee gutter: one vertical spine per co
 # a fixed 0.052 and the provenance line grew.
 FOOTER_BOTTOM = 0.016        # baseline of the lowest footer line
 FOOTER_LEAD = 0.020          # leading within the footer block
-FOOTER_LINES = 4             # reserved; the block wraps into at most this many
+FOOTER_LINES = 2             # reserved; the block wraps into at most this many
 FOOTER_RULE = FOOTER_BOTTOM + FOOTER_LINES * FOOTER_LEAD + 0.014
 LEGEND_BAND = (FOOTER_RULE + 0.014, FOOTER_RULE + 0.130)
 TITLE_FLOOR = 0.800          # nothing else goes above this on the left
 # The columns need to be wide enough for the longest metric string; an earlier
 # 0.098 gave 157 px for a 187 px string, so six blocks hung past the margin.
-COL_X = (MARGIN + 0.174, 1.0 - MARGIN - 0.174)
+# Set from measured type, not guessed: with the trimmed copy the widest block
+# is 168 px ("two interaction points") = 0.105 of a 1600 px frame, so a 0.115
+# offset holds every string with a pad to spare and leaves the drawing the
+# middle 64 % of the width instead of 48 %. That corridor is what lets the site
+# outline stay clear of the text while the camera zooms out rather than in.
+COL_X = (MARGIN + 0.115, 1.0 - MARGIN - 0.115)
 LABEL_FLOOR = LEGEND_BAND[1] + 0.045   # the ladder may not reach into the legend
 
 
@@ -405,10 +418,13 @@ def leader(ax, ax_x, ax_y, lx, ly, colour, s, width, height, *, ha="left", key="
     if not behind:
         if (towards > 0 and ax_x > knee_x) or (towards < 0 and ax_x < knee_x):
             knee_x = ax_x
-        ax.plot([ax_x, knee_x, lx], [ax_y, ly, ly], transform=ax.transAxes, color=LEADER,
-                alpha=0.55, lw=0.6 * s, solid_capstyle="round", solid_joinstyle="miter",
+            ax.plot([ax_x, knee_x, lx], [ax_y, ly, ly], transform=ax.transAxes, color=LEADER,
+                alpha=0.92, lw=1.3 * s, solid_capstyle="round", solid_joinstyle="miter",
                 dashes=(4, 3) if dashed else (None, None), zorder=zorder,
-                path_effects=[patheffects.withStroke(linewidth=1.8 * s, foreground="#05070B66")])
+                path_effects=[patheffects.withStroke(linewidth=3.0 * s, foreground="#05070Bcc")])
+        if abs(knee_x - ax_x) > 1e-4:
+            ax.plot([knee_x], [ly], transform=ax.transAxes, marker="o", ms=2.2 * s,
+                    mfc=LEADER, mec="none", alpha=0.92, zorder=zorder)
         LEADERS.append((key, (ax_x, ax_y), (knee_x, ly), (lx, ly)))
     # the survey mark keeps the category colour: it is the one place the leader
     # touches its subject, so it is where the classification belongs

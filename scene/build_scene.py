@@ -274,6 +274,7 @@ def main():
     site.build_roads(cols["roads"], asphalt)
     site.build_street_lights(cols["lights"])
     site.build_buildings(cols["buildings"], concrete)
+    site.build_village(cols["buildings"])
     ntrees = site.build_trees(cols["trees"], density=args.tree_density)
     # Seen edge-on from a low camera the boundary ribbon reads as a bright streak across the
     # horizon, so by default it is drawn only for the cameras high enough to look down on it.

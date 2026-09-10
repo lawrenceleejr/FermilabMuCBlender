@@ -499,39 +499,39 @@ def annotation_anchors() -> dict[str, dict]:
         "collider": dict(
             ring=dict(center=MC_C, radius=MC_R, z=3.0),
             prefer=(0.78, 0.56),                       # east arc: keeps the collider in the right column
-            label="Muon Collider Ring",
-            metric=f"{circ_km(MC_R)} circumference",
+            label="Collider ring",
+            metric=f"{circ_km(MC_R)}, 10 TeV",
             accent="collider",
         ),
         "detector_a": dict(
             pos=_mc_point(MC_IP_ANGLES[0], z=2.0),
-            label="Detector Hall A",
+            label="Detector hall A",
             metric="interaction point 1",
             accent="collider",
         ),
         "detector_b": dict(
             pos=_mc_point(MC_IP_ANGLES[1], z=2.0),
-            label="Detector Hall B",
+            label="Detector hall B",
             metric="interaction point 2",
             accent="collider",
         ),
         "proton_driver": dict(
             pos=(PD_ACCUM_C[0], PD_ACCUM_C[1] + PD_ACCUM_R, 3.0),
-            label="Proton Driver Complex",
-            metric="linac, accumulator, target",
+            label="Proton driver",
+            metric="linac, accumulator",
             accent="collider",
         ),
         "cooling": dict(
             pos=(COOLING_PATH[-1][0], COOLING_PATH[-1][1], 4.0),
-            label="Muon Cooling Complex",
-            metric="ionisation cooling channel",
+            label="Muon cooling",
+            metric="ionisation channel",
             accent="collider",
         ),
         "rcs12": dict(
             ring=dict(center=RCS12_C, radius=RCS12_DRAW_R, z=4.4),
             prefer=(0.30, 0.71),
             label="RCS 1 & 2",
-            metric=f"in the Tevatron tunnel, {circ_km(RCS12_R)} of {circ_km(TEV_R)}",
+            metric=f"{circ_km(RCS12_R)} in the Tevatron",
             accent="collider",
         ),
         "rcs3": dict(
@@ -544,15 +544,15 @@ def annotation_anchors() -> dict[str, dict]:
         "rcs4": dict(
             ring=dict(center=RCS4_C, radius=RCS4_R, z=4.4),
             prefer=(0.15, 0.50),
-            label="RCS 4 site filler",
-            metric=f"{circ_km(RCS4_R)}, largest ring the site holds",
+            label="RCS 4 filler",
+            metric=f"{circ_km(RCS4_R)}, fits the site",
             accent="collider",
         ),
         "tevatron": dict(
             ring=dict(center=TEV_C, radius=TEV_R, z=6.6),
             prefer=(0.24, 0.66),
-            label="Tevatron Ring",
-            metric=f"{circ_km(TEV_R)}, tunnel reused",
+            label="Tevatron ring",
+            metric=f"{circ_km(TEV_R)}, reused",
             accent="tevatron",
         ),
         "main_injector": dict(
@@ -572,7 +572,7 @@ def annotation_anchors() -> dict[str, dict]:
             path=CAMPUS_BOUNDARY,
             z=2.0,
             prefer=(0.40, 0.80),                       # the near south edge, below the rings
-            label="Fermilab Site",
+            label="Fermilab site",
             metric=f"{CAMPUS_AREA_KM2:.1f}{NNBSP}km\u00b2, {CAMPUS_AREA_KM2 * 247.105:.0f} acres",
             accent="boundary",
         ),
@@ -714,6 +714,50 @@ def _resample(pts, spacing):
     return out
 
 
+# The Fermilab Village, on the east side of the campus: found in the mapped
+# buildings rather than guessed, as the densest cluster inside the site
+# boundary. Users Center, Dormitories 1-4 and Aspen East all sit here, about
+# 100 footprints spanning x 3100..3650, y 250..800.
+VILLAGE_C = (3300.0, 550.0)
+VILLAGE_R = 700.0
+
+
+def build_village(col):
+    """Lit low-rise buildings on the real Village footprints, plus its lighting.
+
+    The Village is where people actually are on site, so at twilight it is the
+    one part of the campus that should read as inhabited: warm windows, a lit
+    street grid and parking-lot lamps, against a laboratory that is otherwise
+    floodlit plant.
+    """
+    warm = _lit_box_material("village_bld", (0.30, 0.26, 0.22),
+                             lit_color=C.kelvin_rgb(2850), lit_strength=1.1,
+                             band=(0.25, 0.80), lit_fraction=0.55, pane_w=1.6, seed=23.0)
+    unit = C.box_mesh_data("village_box")
+    rng = random.Random(77)
+    n = 0
+    for w in geo.ways("buildings", closed=True, min_pts=4, radius=6000.0):
+        pts = w["pts"]
+        cx = sum(p[0] for p in pts) / len(pts)
+        cy = sum(p[1] for p in pts) / len(pts)
+        if math.hypot(cx - VILLAGE_C[0], cy - VILLAGE_C[1]) > VILLAGE_R:
+            continue
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        sx, sy = max(max(xs) - min(xs), 8.0), max(max(ys) - min(ys), 8.0)
+        if sx > 120 or sy > 120:           # skip the odd large shed
+            sx, sy = min(sx, 120.0), min(sy, 120.0)
+        sz = rng.uniform(6.0, 9.5) if max(sx, sy) < 40 else rng.uniform(8.0, 12.0)
+        me = unit.copy()
+        me.materials.append(warm)
+        C.instance(f"village_{n}", me, col=col,
+                   location=(cx, cy, geo.elev(cx, cy)), scale=(sx, sy, sz))
+        n += 1
+    print(f"[site] Village: {n} lit buildings on mapped footprints at "
+          f"({VILLAGE_C[0]:.0f}, {VILLAGE_C[1]:.0f})")
+    return n
+
+
 def build_street_lights(col, *, near=1800.0, far=12000.0, cap=4200):
     """Lights on the roads that exist, near ones as poles and far ones as points.
 
@@ -735,13 +779,28 @@ def build_street_lights(col, *, near=1800.0, far=12000.0, cap=4200):
     rng = random.Random(41)
     n_near = n_far = 0
 
+    # The campus's own roads get poles across the whole site, not just within
+    # 1.8 km of Wilson Hall: the boundary is 5.7 x 6.2 km, so the old radius lit
+    # the centre and left the rest of the laboratory dark. Inside the Village
+    # the spacing tightens, because a residential street grid is lit far more
+    # densely than a service road across the prairie.
+    on_site = CAMPUS_BOUNDARY
     for layer, spacing, radius in (("major_roads", 105.0, far),
-                                   ("site_roads", 70.0, near)):
+                                   ("minor_roads", 95.0, 6500.0),
+                                   ("site_roads", 80.0, 5200.0)):
         for w in geo.ways(layer, min_pts=2, radius=radius):
             pts = [(p[0], p[1]) for p in w["pts"]]
             for i, (x, y) in enumerate(_resample(pts, spacing)):
                 d = math.hypot(x, y)
                 if d > radius:
+                    continue
+                in_site = geo.point_in(on_site, x, y)
+                in_village = math.hypot(x - VILLAGE_C[0], y - VILLAGE_C[1]) < VILLAGE_R
+                # anything on the campus is pole-lit however far out it is
+                if in_site or in_village:
+                    lamp(x, y + (6.0 if i % 2 else -6.0),
+                         "led" if in_village else "sodium")
+                    n_near += 1
                     continue
                 # thin them out with distance: a far road reads as a dotted
                 # line of light, not a continuous strip
@@ -754,8 +813,15 @@ def build_street_lights(col, *, near=1800.0, far=12000.0, cap=4200):
                     C.instance(f"lamp_far_{n_far}", head_far, col=col,
                                location=(x, y, geo.elev(x, y) + 9.2))
                     n_far += 1
-    print(f"[site] street lights: {n_near} poles inside {near / 1000:.1f} km, "
-          f"{n_far} distant points out to {far / 1000:.0f} km")
+    # a denser lot/path grid through the Village itself
+    for k in range(90):
+        a = rng.uniform(0, 2 * math.pi)
+        r = VILLAGE_R * 0.85 * math.sqrt(rng.random())
+        x, y = VILLAGE_C[0] + r * math.cos(a), VILLAGE_C[1] + r * math.sin(a)
+        lamp(x, y, "led" if k % 3 else "sodium")
+        n_near += 1
+    print(f"[site] street lights: {n_near} poles on campus and inside "
+          f"{near / 1000:.1f} km, {n_far} distant points out to {far / 1000:.0f} km")
     return lamp
 
 
