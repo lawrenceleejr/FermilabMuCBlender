@@ -75,30 +75,33 @@ PD_BUNCH_R = 600.0 / TAU                     # 95.5 m, mid-range
 MC_C = RCS4_C
 MC_IP_ANGLES = (120.0, 300.0)                # detector halls, diametrically opposite
 
-# The proton driver complex, placed by search rather than by hand. The previous
-# position put the buncher ring and the whole 1030 m linac *outside* the
-# property line -- the site is 5.7 x 6.2 km with an irregular south-west edge,
-# and an eyeballed position at (-560, -2180) with the linac running west to
-# x = -1750 simply left the site, which no siting study could propose.
+# The proton driver complex, inside the Tevatron ring, laid out along one axis
+# through its centre and sized to fit: linac, then the accumulator and buncher
+# straddling the centre, then the target hall, then the cooling channel running
+# out to the ring's own perimeter. Solved over the axis bearing rather than
+# placed by hand -- 232 deg (south-west) gives 118 m of clearance from the 294
+# mapped on-site buildings, which is the binding constraint in there.
 #
-# The corridor below is the best that satisfies all of: every element inside the
-# real boundary with a 180 m setback, at least 130 m clear of every existing and
-# proposed tunnel, and at least 130 m clear of the 294 mapped on-site buildings
-# so the linac does not run through the developed campus. It achieves 220 m of
-# setback, 408 m of tunnel clearance and 511 m of building clearance, in the
-# north-east of the site on a 320 deg bearing -- the front end at the periphery
-# feeding inward to the ring chain, which is also how such a complex is laid out.
-LINAC = ((2420.0, 3360.0), (3209.0, 2698.0))
-PD_ACCUM_C = (3388.0, 2548.0)
-PD_BUNCH_C = (3670.0, 2311.0)
-TARGET_XY = (3881.0, 2134.0)
+# What could not be satisfied, and why: the interior of the Tevatron ring is
+# crossed by every other tunnel in the figure. Measured from its centre, the
+# collider circle passes 276 m away, RCS 3 387 m, the RCS 4 filler 992 m and
+# the Main Injector 903 m -- all four cross the ring. So no position inside it
+# can be clear of all of them, and the search asks only for clearance from what
+# shares its grade: existing buildings. The cooling channel passes within 17 m
+# of the collider line, which is a crossing, at different depths, like the
+# others the figure already carries.
+LINAC = ((1389.0, -26.0), (1007.0, -514.0))
+PD_ACCUM_C = (919.0, -627.0)
+PD_BUNCH_C = (773.0, -815.0)
+TARGET_XY = (675.0, -940.0)
 
 # Ionisation cooling: the document specifies 10 "B-type" rectilinear stages
 # S1-S10 plus A-stages, bunch merge and final cooling, but no overall length,
-# so the channel is drawn at an indicative 500 m and labelled by stage count.
-# It runs inward from the target and stops 130 m short of the outermost tunnel.
-COOLING_PATH = [(3881.0, 2134.0), (3800.0, 2034.4), (3708.0, 1949.8),
-                (3600.2, 1886.4), (3481.4, 1838.0)]
+# so the channel is drawn at an indicative 640 m and labelled by stage count.
+# It runs from the target hall out to the smaller synchrotron's ring, ending
+# 30 m short of it -- 940 m from the Tevatron centre against the ring's 970.
+COOLING_PATH = [(650.3, -971.4), (551.8, -1097.5), (453.3, -1223.6),
+                (354.8, -1349.6), (256.3, -1475.7)]
 COOLING_MODULES = 20
 
 # RCS 1 and 2 share the Tevatron tunnel, so they are drawn on the Tevatron's
