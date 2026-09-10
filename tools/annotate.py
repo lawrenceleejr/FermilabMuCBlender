@@ -111,9 +111,11 @@ METRIC_INK = "#C9D2DE"
 # Sides and vertical order are *computed*, not typed. Every anchor in this view
 # sits between x 0.20 and 0.60, so a fixed two-column assignment sent leaders
 # back across the frame: nine pairs crossed. Assigning each callout to the
-# column its own anchor is nearer, then ordering each column by anchor height,
-# makes crossings geometrically impossible -- within a column the order is
-# monotonic, and between columns the leaders travel in opposite directions.
+# column its own anchor is nearer, which keeps leaders off the drawing. Within
+# a column, ordering by anchor height is NOT sufficient -- an earlier version of
+# this comment claimed it made crossings impossible, and it does not: two
+# leaders converging on one gutter cross as soon as their anchors differ in x.
+# The order is settled by the crossing test itself, in draw_features.
 #
 # That costs the beam order, which stacking used to imply badly. It is now
 # stated outright in the sequence ribbon along the bottom, so the reader gets
@@ -734,6 +736,49 @@ def draw_features(ax, F, s, anno, layout_name, width, height):
     # its own anchors, which is what reintroduced a crossing. Ranking by anchor
     # x and halving keeps the columns within one of each other while still
     # giving every callout the side its anchor leans toward.
+    def _segs(ax_x, ax_y, lx, ly, ha, text_edge):
+        """The leader polyline leader() would draw, for a candidate rung."""
+        towards = 1.0 if ha == "left" else -1.0
+        knee_x = lx - towards * GUTTER
+        if (towards < 0 and ax_x < text_edge) or (towards > 0 and ax_x > text_edge):
+            return []                                  # behind its own label: no line
+        if (towards > 0 and ax_x > knee_x) or (towards < 0 and ax_x < knee_x):
+            knee_x = ax_x
+        p = [(ax_x * width, ax_y * height), (knee_x * width, ly * height),
+             (lx * width, ly * height)]
+        return [(p[0], p[1]), (p[1], p[2])]
+
+    def _order_without_crossings(items, ys, lx, ha, passes=8):
+        """Assign rungs to anchors so their leaders do not cross.
+
+        Ordering a column by anchor height is *not* sufficient, which an earlier
+        version of this code claimed. Two leaders converging on one gutter cross
+        as soon as their anchors differ in x and the lower rung's diagonal rides
+        over the higher anchor -- the collider's anchor at x 0.63 against the
+        proton driver's at 0.45 was exactly that, and re-aiming either one only
+        moves the crossing to its neighbour.
+
+        So the order is settled by the crossing test itself: adjacent rungs swap
+        whenever their leaders cross, repeatedly. A bubble sort against the real
+        geometry rather than against a proxy for it.
+        """
+        pad = 0.010
+        idx = list(range(len(items)))
+        for _ in range(passes):
+            swapped = False
+            for i in range(len(idx) - 1):
+                fa = feats[items[idx[i]][1][0]]
+                fb = feats[items[idx[i + 1]][1][0]]
+                edge = lx + (pad if ha == "left" else -pad)
+                sa = _segs(fa["x"], 1.0 - fa["y"], lx, ys[i] - 0.012, ha, edge)
+                sb = _segs(fb["x"], 1.0 - fb["y"], lx, ys[i + 1] - 0.012, ha, edge)
+                if any(_crosses(p, q, r, t) for p, q in sa for r, t in sb):
+                    idx[i], idx[i + 1] = idx[i + 1], idx[i]
+                    swapped = True
+            if not swapped:
+                break
+        return idx
+
     ordered = sorted(groups, key=lambda t: feats[t[1][0]]["x"])
     half = (len(ordered) + 1) // 2
     columns = {"left": ordered[:half], "right": ordered[half:]}
@@ -747,6 +792,9 @@ def draw_features(ax, F, s, anno, layout_name, width, height):
         ys = place_rungs(anchors)
         lx = COL_X[0] if side == "left" else COL_X[1]
         ha = "right" if side == "left" else "left"
+        # anchor height sets the rungs' spacing; the crossing test sets which
+        # callout gets which rung
+        items = [items[i] for i in _order_without_crossings(items, ys, lx, ha)]
         for (g, keys), ly in zip(items, ys):
             placed.append((g, keys, lx, ly, ha, feats[keys[0]].get("depth_m", 0.0)))
 
@@ -823,7 +871,7 @@ def _seg_hits_box(p, q, x0, y0, x1, y1) -> bool:
     return t0 <= t1
 
 
-def check_collisions(fig, ax, width, height, *, pad_px=6.0):
+def check_collisions(fig, ax, width, height, *, s=1.0, pad_px=6.0):
     """Measure the layout and report everything that is actually wrong with it.
 
     The previous version tested pairwise text overlap and a 2 px canvas clip,
@@ -841,6 +889,14 @@ def check_collisions(fig, ax, width, height, *, pad_px=6.0):
 
     A guard that measures the wrong quantity is worse than no guard, because it
     licenses the belief that the layout has been checked.
+
+    Every tolerance scales with `s`, the frame's width over the 1600 px
+    reference, because everything it measures does. With the pads fixed in
+    absolute pixels the same layout passed at 1600 px and reported fifteen
+    faults at 800 px -- fourteen of them label/metric pairs that are deliberately
+    close and exempted, whose gap in pixels halves with the frame while a 1 px
+    exemption does not. That would have failed --strict on every render at any
+    other width, the CI matrix at 960 px included.
     """
     # a bare Figure has no renderer until one is attached; Agg gives real
     # FreeType extents, which is the whole point of measuring rather than guessing
@@ -861,7 +917,7 @@ def check_collisions(fig, ax, width, height, *, pad_px=6.0):
     for i in range(len(boxes)):
         for j in range(i + 1, len(boxes)):
             a, b = boxes[i], boxes[j]
-            pad = 1.0 if a[5] == b[5] else pad_px       # same group: close is intended
+            pad = (1.0 if a[5] == b[5] else pad_px) * s   # same group: close is intended
             if overlap(a, b, pad):
                 hits.append((a[0], b[0], "text/text"))
 
@@ -875,16 +931,16 @@ def check_collisions(fig, ax, width, height, *, pad_px=6.0):
             continue
         for zname, (zx0, zy0, zx1, zy1) in zones.items():
             z = (zname, zx0 * width, zy0 * height, zx1 * width, zy1 * height)
-            if overlap((role, x0, y0, x1, y1), z, 2.0):
+            if overlap((role, x0, y0, x1, y1), z, 2.0 * s):
                 hits.append((role, zname, "text/zone"))
 
     # the margin is a specification, not an outcome: a flush edge that some
     # lines cross is not an edge
     ml, mr = MARGIN * width, (1.0 - MARGIN) * width
     for role, x0, y0, x1, y1, _grp in boxes:
-        if x0 < ml - 1.0:
+        if x0 < ml - 1.0 * s:
             hits.append((role, f"left margin by {ml - x0:.0f} px", "margin"))
-        if x1 > mr + 1.0:
+        if x1 > mr + 1.0 * s:
             hits.append((role, f"right margin by {x1 - mr:.0f} px", "margin"))
 
     # leader against leader: a crossing is where the reader loses the thread,
@@ -917,11 +973,9 @@ def check_collisions(fig, ax, width, height, *, pad_px=6.0):
                 ((k[0] * width, k[1] * height), (e[0] * width, e[1] * height))]
         for role, x0, y0, x1, y1, _grp in boxes:
             if role.split(":", 1)[-1] == key:
-                pad = 1.0          # its own label: touching the edge is the point
-            elif role.startswith(("credit", "legend", "title", "deck")):
-                pad = 2.0
+                pad = 1.0 * s      # its own label: touching the edge is the point
             else:
-                pad = 2.0
+                pad = 2.0 * s
             bx0, by0, bx1, by1 = x0 - pad, y0 - pad, x1 + pad, y1 + pad
             for p, q in segs:
                 # segment against an axis-aligned box, by clipping
@@ -934,7 +988,7 @@ def check_collisions(fig, ax, width, height, *, pad_px=6.0):
 
     # anything running off the canvas
     for role, x0, y0, x1, y1, _grp in boxes:
-        if x0 < 2 or y0 < 2 or x1 > width - 2 or y1 > height - 2:
+        if x0 < 2 * s or y0 < 2 * s or x1 > width - 2 * s or y1 > height - 2 * s:
             hits.append((role, "canvas edge", "clipped"))
 
     if hits:
@@ -943,7 +997,7 @@ def check_collisions(fig, ax, width, height, *, pad_px=6.0):
             print(f"    {kind:11s} {a}  <->  {b}")
     else:
         print(f"[annotate] layout OK: {len(boxes)} text blocks and {len(LEADERS)} leaders; "
-              f"no overlaps within {pad_px:.0f} px, no margin breaks, no leader crossings, "
+              f"no overlaps within {pad_px * s:.1f} px, no margin breaks, no leader crossings, "
               "no leader through type")
     return hits
 
@@ -1003,7 +1057,7 @@ def build(args) -> int:
         draw_scale_and_north(ax, F, s, anno, width, height)
         draw_features(ax, F, s, anno, args.layout, width, height)
 
-    hits = check_collisions(fig, ax, width, height) if not args.debug else []
+    hits = check_collisions(fig, ax, width, height, s=s) if not args.debug else []
     if hits and args.strict:
         print("[annotate] --strict: refusing to write a figure with spacing problems")
         return 1
