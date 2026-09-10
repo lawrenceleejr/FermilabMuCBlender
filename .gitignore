@@ -3,6 +3,7 @@
 assets/textures/
 assets/hdri/
 assets/starmap/
+assets/geo/
 
 # Scratch renders, previews and inspection sheets
 out/
