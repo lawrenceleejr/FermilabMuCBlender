@@ -82,7 +82,7 @@ DASHED = {"offsite"}
 # in the frame to point at is worse than no key at all.
 KEY = [
     ("collider", "Proposed"),
-    ("tevatron", "Existing, reused"),
+    ("tevatron", "Existing"),
     ("boundary", "Site and context"),
 ]
 
@@ -152,7 +152,7 @@ CHAIN = [
     dict(keys=["rcs4", "rcs12", "rcs3"], stage=3, label="RCS 1\u20134",
          purpose="Rapid cycling synchrotrons to accelerate beam to TeV scale"),
     dict(keys=["collider"], stage=4, label="Collider Ring",
-         purpose="Storage rings lead to 10 TeV collisions in detector halls"),
+         purpose="Storage rings lead to 10 TeV collisions in detector halls"),
     dict(keys=["detector_a", "detector_b"], stage=5, label="Detector Halls",
          purpose="Cathedral-sized detectors measure collision products "
                  "in presence of large beam background"),
@@ -166,15 +166,18 @@ CONTEXT = [
          purpose="Existing 6.28 km tunnel, reused for the first synchrotrons"),
     dict(keys=["main_injector"], label="Main Injector", side="right",
          purpose="Existing 3.32 km synchrotron, available for reuse"),
-    dict(keys=["boundary"], label="Fermilab Site", side="right",
-         purpose="27.7 km\u00b2 campus contains the entire chain"),
+    # No purpose line: the boundary is the one callout whose subject needs no
+    # explaining, and the area figure it used to carry is not what the label is
+    # for. fit_lines returns no lines for an absent purpose, so the block is
+    # simply the name and the ladder spaces it accordingly.
+    dict(keys=["boundary"], label="Fermilab Site", side="right"),
 ]
 
 LAYOUTS = {
     "overview": CHAIN + CONTEXT,
     "northeast": [
         dict(keys=["collider"], stage=5, label="Collider Ring",
-             purpose="Storage rings lead to 10 TeV collisions in detector halls"),
+             purpose="Storage rings lead to 10 TeV collisions in detector halls"),
         dict(keys=["wilson"], label="Wilson Hall",
              purpose="Central laboratory and site landmark"),
     ],
@@ -275,7 +278,7 @@ TITLE = dict(
     # Broken at the comma, which also keeps both lines inside the 45-75
     # character measure that is comfortable to read: 57 and 72.
     deck="An accelerator and collider complex on the Fermilab site,\n"
-         "reusing existing infrastructure, targeting collision energies of 10 TeV.",
+         "reusing existing infrastructure, targeting collision energies of 10 TeV.",
 )
 
 # The footer carries only what the image cannot say for itself: where the
@@ -287,6 +290,7 @@ TITLE = dict(
 # require. Everything else that used to sit here -- the instant, the solar
 # geometry, the lens, the acceleration-turns caveat -- was detail a site plan's
 # reader does not need, and it crowded the frame.
+BYLINE = "Created by Lawrence Lee (UTK) on behalf of USMCC"
 PROVENANCE = "Ring sizes: IMCC parameter list, 2023. Siting indicative."
 CREDIT = ("\u00a9 OpenStreetMap contributors (ODbL) \u00b7 AWS Terrain Tiles \u00b7 "
           "star field NASA/GSFC, Gaia DR2 (ESA/Gaia/DPAC)")
@@ -304,7 +308,7 @@ GUTTER = 0.030               # the common knee gutter: one vertical spine per co
 # a fixed 0.052 and the provenance line grew.
 FOOTER_BOTTOM = 0.016        # baseline of the lowest footer line
 FOOTER_LEAD = 0.020          # leading within the footer block
-FOOTER_LINES = 2             # reserved; the block wraps into at most this many
+FOOTER_LINES = 3             # reserved; the block wraps into at most this many
 FOOTER_RULE = FOOTER_BOTTOM + FOOTER_LINES * FOOTER_LEAD + 0.014
 # 0.130 tall when it held the sequence ribbon above the key; the ribbon is gone,
 # so the band is the key and the scale bar and nothing else. The 0.055 this
@@ -496,7 +500,13 @@ def fit_lines(ax, body, fp, size, s, max_w, width):
     221 px past the right margin, which a character budget would not have
     caught because it depends on the face and the size.
     """
-    words = body.split()
+    # Split on ASCII blanks only. `str.split()` splits on *Unicode* whitespace,
+    # which includes U+00A0 and U+202F, so a no-break space inside "10 TeV" was
+    # both broken across lines and destroyed -- split() discards the separator
+    # and the rejoin below puts an ordinary space back. A no-break space is a
+    # request not to break, so it has to survive the code that breaks.
+    words = body.replace("\t", " ").replace("\n", " ").split(" ")
+    words = [w for w in words if w]
     lines, cur = [], ""
     for wd in words:
         trial = f"{cur} {wd}".strip()
@@ -591,7 +601,11 @@ def draw_title(ax, F, s, width, height, copy=None):
     # a measured tick, not an orphaned underline: the old 99 px rule under a
     # 560 px title read as neither. Neutral, so the title block does not enrol
     # itself in the categorical colour scale.
-    ax.plot([x, x + 0.150], [0.874, 0.874], transform=ax.transAxes, color=INK,
+    # The title block had 0.014 of space between the title and this rule and
+    # 0.062 between the rule and the deck -- the rule read as belonging to the
+    # title with the deck adrift below it. Closed from both sides: the rule
+    # drops to 0.852 and the deck rises to 0.824.
+    ax.plot([x, x + 0.150], [0.852, 0.852], transform=ax.transAxes, color=INK,
             lw=1.6 * s, alpha=0.35, solid_capstyle="butt", zorder=8)
     # 1.32 only here, and the parameter defaults to None everywhere else for a
     # reason worth recording: passing linespacing *at all* switches matplotlib
@@ -599,15 +613,15 @@ def draw_title(ax, F, s, width, height, copy=None):
     # 10.50 for the same string -- so setting even 1.20, matplotlib's own
     # figure, grew all 46 blocks by 2 px and broke three deliberate name/metric
     # pairs into reported collisions.
-    # 0.812, not 0.852. With the panels gone the deck's ground is whatever the
+    # 0.824, not 0.852. With the panels gone the deck's ground is whatever the
     # render puts behind it, and at 0.852 that was the brightest band of the
-    # twilight sky: light type on light sky, measured at WCAG 2.30. No ink and
-    # no halo can fix that -- reaching 4.5 against a ground that bright would
-    # need a relative luminance above 1.0 -- so the block moves instead, far
-    # enough to clear the horizon glow and sit on the land. Measured across the
-    # move: 2.30 at 0.852, 4.39 at 0.832, 6.21 at 0.817, 6.60 here. Further
-    # down the ladder starts to overrun.
-    t = text(ax, x, 0.812, copy["deck"], F["sans"], TYPE["deck"], "#D8D3C9", s, va="top",
+    # twilight sky: light type on light sky. No ink and no halo can fix that --
+    # reaching even the large-text floor against a ground that bright is not
+    # possible with a light ink -- so the block sits low enough to clear the
+    # horizon glow. Measured on the current render: 2.26 at 0.860, 2.44 at
+    # 0.848, 3.83 at 0.836, comfortable from 0.824 down. Further down and the
+    # ladder starts to overrun.
+    t = text(ax, x, 0.824, copy["deck"], F["sans"], TYPE["deck"], "#D8D3C9", s, va="top",
              role="deck", linespacing=1.32)
     # Return where the block actually ends, rather than leaving the ladder to
     # trust a typed constant. TITLE_FLOOR was 0.800 and the deck's measured
@@ -657,7 +671,9 @@ def draw_footer(ax, F, s, anno, width):
             color=INK, lw=1.0 * s, alpha=0.28, zorder=7)
     avail = 1.0 - 2 * MARGIN
     lines = []
-    for body, colour, role in ((PROVENANCE, "#A7AEB9", "credit:provenance"),
+    # Authorship first, then where the numbers came from, then the licences.
+    for body, colour, role in ((BYLINE, "#C2C8D2", "credit:byline"),
+                               (PROVENANCE, "#A7AEB9", "credit:provenance"),
                                (CREDIT, "#8C939E", "credit:sources")):
         for line in fit_lines(ax, body, F["sans"], TYPE["credit"], s, avail, width):
             lines.append((line, colour, role))
@@ -704,7 +720,15 @@ def draw_scale(ax, F, s, anno, width, height):
     # near-identical right edges 20-140 px apart read as sloppiness
     x1 = 1.0 - MARGIN
     x0 = x1 - east
-    y0 = LEGEND_BAND[0] + 0.010
+    # The bar is positioned from its caption, not the other way round. The
+    # caption used to hang 0.032 below a bar set 0.010 into the legend band,
+    # which put its baseline underneath the footer rule -- the two collided,
+    # and the checker never saw it because a rule is not a text block. Deriving
+    # the bar's height from the caption row also puts the caption on the same
+    # baseline as the legend key at the other end of the frame, where before
+    # the two sat 0.010 apart across the full width of the figure.
+    cap_y = LEGEND_BAND[0] + 0.014            # the legend key's own baseline
+    y0 = cap_y + 0.032
 
     ax.plot([x0, x1], [y0, y0], transform=ax.transAxes, color=INK, lw=1.9 * s,
             solid_capstyle="butt", zorder=8)
@@ -712,7 +736,7 @@ def draw_scale(ax, F, s, anno, width, height):
         tx = x0 + east * f
         ax.plot([tx, tx], [y0, y0 - 0.012], transform=ax.transAxes, color=INK,
                 lw=1.4 * s, zorder=8)
-    text(ax, x1, y0 - 0.032, f"{km:g}\u202fkm", F["sans_med"], TYPE["meta"], INK, s,
+    text(ax, x1, cap_y, f"{km:g}\u202fkm", F["sans_med"], TYPE["meta"], INK, s,
          ha="right", va="center", role="legend:scale", group="scale")
 
 
