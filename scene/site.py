@@ -249,30 +249,33 @@ def build_terrain(col, mat, *, grid=TERRAIN_GRID, apron=True):
 
     if not apron:
         return
-    # Four quads forming a frame around the DEM rather than one big plane under
-    # it: no overlap, so nothing z-fights with the displaced mesh. Each side
-    # takes the DEM's own mean elevation along that edge, which keeps the seam
-    # at a few tens of metres over 30 km -- well under a pixel at this distance.
+    # The apron is a strip that follows the DEM's own edge, not four flat quads
+    # at a per-side mean. Two reasons. It leaves no step at the seam, because
+    # the inner vertices *are* the DEM's edge heights. And it agrees with
+    # geo.elev(), which clamps to the nearest edge sample outside the DEM: with
+    # a per-side mean the two disagreed by up to 80 m, so anything placed out
+    # there -- the 50-mile road lamps among it -- floated above the ground.
     h, R = TERRAIN_HALF, HORIZON_REACH
-    n = 24
-    def edge_mean(fixed, axis):
-        vals = []
-        for i in range(n + 1):
-            t = -h + 2 * h * i / n
-            vals.append(geo.elev(fixed, t) if axis == "x" else geo.elev(t, fixed))
-        return sum(vals) / len(vals)
-    zw, ze = edge_mean(-h, "x"), edge_mean(h, "x")
-    zs_, zn = edge_mean(-h, "y"), edge_mean(h, "y")
-    sides = {
-        "apron_n": ([(-R, h, zn), (R, h, zn), (R, R, zn), (-R, R, zn)]),
-        "apron_s": ([(-R, -R, zs_), (R, -R, zs_), (R, -h, zs_), (-R, -h, zs_)]),
-        "apron_w": ([(-R, -h, zw), (-h, -h, zw), (-h, h, zw), (-R, h, zw)]),
-        "apron_e": ([(h, -h, ze), (R, -h, ze), (R, h, ze), (h, h, ze)]),
-    }
-    for name, vs in sides.items():
-        C.mesh_object(name, vs, [(0, 1, 2, 3)], col=col, material=mat)
-    print(f"[site] far apron out to {R / 1000:.0f} km (the horizon at 2.2 km altitude), "
-          f"edge z N{zn:+.0f} S{zs_:+.0f} E{ze:+.0f} W{zw:+.0f} m")
+    k = R / h                                  # radial scale: square -> square
+    per = 48                                   # samples per side
+    ring = []
+    for side in range(4):
+        for i in range(per):
+            t = -h + 2 * h * i / per
+            ring.append(((t, -h), (h, t), (-t, h), (-h, -t))[side])
+    verts, faces = [], []
+    for i, (x, y) in enumerate(ring):
+        z = geo.elev(x, y)
+        verts.append((x, y, z))
+        verts.append((x * k, y * k, z))
+    n = len(ring)
+    for i in range(n):
+        a, b = 2 * i, 2 * ((i + 1) % n)
+        faces.append((a, b, b + 1, a + 1))
+    C.mesh_object("terrain_apron", verts, faces, col=col, material=mat, smooth=True)
+    zs = [v[2] for v in verts]
+    print(f"[site] far apron out to {R / 1000:.0f} km (the horizon at 2.2 km "
+          f"altitude), following the DEM edge, z {min(zs):+.0f}..{max(zs):+.0f} m")
 
 
 # --------------------------------------------------------------------------- #
@@ -674,11 +677,24 @@ def build_roads(col, asphalt):
     return n
 
 
-def _lamp_factory(col):
-    sodium = C.emissive_material("lamp_sodium", SODIUM, 22.0, camera_strength=24.0)
-    led = C.emissive_material("lamp_led", LED_WHITE, 16.0, camera_strength=20.0)
+def _lamp_factory(col, *, head_r=1.5):
+    """Pole-and-head street lamps.
+
+    The head radius is a rendering device, not a claim about luminaire size. At
+    the overview camera's scale one metre is about 0.16 px, so the 0.42 m head
+    this used to build was 0.07 px across -- the campus was carrying 1300 lamps
+    that could not be seen at all. A 1.5 m head with the emission strength to
+    bloom through the compositor's glare reads as a point of light at 6 km and
+    still passes for a luminaire plus its halo from the close-range cameras.
+
+    Warm throughout: sodium at 2150 K for the campus roads and the Village
+    alike. The Village had been on 4200 K LEDs, which read cold against a
+    laboratory lit in sodium and was not what the brief asked for.
+    """
+    sodium = C.emissive_material("lamp_sodium", SODIUM, 22.0, camera_strength=34.0)
+    led = C.emissive_material("lamp_led", LED_WHITE, 16.0, camera_strength=26.0)
     pole = C.flat_material("lamp_pole", (0.05, 0.05, 0.05), roughness=0.6)
-    head = C.sphere_mesh_data("lamp_head", 0.42)
+    head = C.sphere_mesh_data("lamp_head", head_r)
     pole_bm = C.cylinder_bmesh(0.12, 9.0, n=6)
     pole_me = bpy.data.meshes.new("lamp_pole_m")
     pole_bm.to_mesh(pole_me)
@@ -697,8 +713,10 @@ def _lamp_factory(col):
         counter[0] += 1
         x += jit.uniform(-1.5, 1.5)
         y += jit.uniform(-1.5, 1.5)
-        C.instance(f"lamp_pole_{counter[0]}", pole_me, col=col, location=(x, y, 0.1))
-        C.instance(f"lamp_{counter[0]}", head_s if kind == "sodium" else head_l, col=col, location=(x, y, 9.2))
+        z = geo.elev(x, y)
+        C.instance(f"lamp_pole_{counter[0]}", pole_me, col=col, location=(x, y, z + 0.1))
+        C.instance(f"lamp_{counter[0]}", head_s if kind == "sodium" else head_l, col=col,
+                   location=(x, y, z + 9.2))
 
     return lamp
 
@@ -782,34 +800,39 @@ def build_village(col):
     return n
 
 
-def build_street_lights(col, *, near=1800.0, far=12000.0, cap=4200):
-    """Lights on the roads that exist, near ones as poles and far ones as points.
+def build_street_lights(col, *, near=1800.0, mid=16000.0, far=80500.0,
+                        mid_cap=6000, far_cap=14000):
+    """Lights on the roads that exist, out to 50 miles, in three registers.
 
-    "Street lights in the distance" is most of what tells a viewer this is an
-    inhabited landscape rather than an empty plain, and at 10 km a lamp is a
-    point of light -- a pole would be a tenth of a pixel. So the near field
-    gets pole-and-head geometry and everything beyond `near` gets a bare
-    emissive point at lamp height, which is both what it looks like and what
-    keeps the instance count somewhere Cycles can sample.
+    The registers exist because a street lamp cannot be drawn at every scale in
+    this frame. At 85 km a 6 m glow subtends 0.06 px, so a distant lamp is never
+    resolved as an object -- it only reads through the light many of them put
+    into one pixel, which is exactly how distant road lighting looks. So:
 
-    Capped, because the mapped network inside 12 km carries a few hundred
-    kilometres of road and lighting all of it at 100 m spacing would be tens of
-    thousands of emitters.
+      * inside the site, and within `near`, pole-and-head geometry;
+      * out to `mid`, bare emissive heads at road spacing;
+      * out to `far` (50 miles), sparser points on a cheap emitter -- almost no
+        emission strength, since they are not lighting anything, but enough
+        camera strength to bloom. Spacing grows with distance so density falls
+        the way perspective compresses it, rather than piling tens of thousands
+        of emitters into the last few rows of pixels.
+
+    Everything is warm: sodium at 2150 K throughout, campus and Village
+    included.
     """
     lamp = _lamp_factory(col)
-    sodium = C.emissive_material("lamp_far_sodium", SODIUM, 26.0, camera_strength=30.0)
-    head_far = C.sphere_mesh_data("lamp_far_head", 1.1)
+    sodium = C.emissive_material("lamp_far_sodium", SODIUM, 26.0, camera_strength=34.0)
+    head_far = C.sphere_mesh_data("lamp_far_head", 1.7)
     head_far.materials.append(sodium)
+    # the horizon register: bright to camera, nearly no contribution to lighting
+    horizon = C.emissive_material("lamp_horizon", SODIUM, 1.5, camera_strength=42.0)
+    head_h = C.sphere_mesh_data("lamp_horizon_head", 4.5)
+    head_h.materials.append(horizon)
     rng = random.Random(41)
-    n_near = n_far = 0
+    n_near = n_mid = n_far = 0
 
-    # The campus's own roads get poles across the whole site, not just within
-    # 1.8 km of Wilson Hall: the boundary is 5.7 x 6.2 km, so the old radius lit
-    # the centre and left the rest of the laboratory dark. Inside the Village
-    # the spacing tightens, because a residential street grid is lit far more
-    # densely than a service road across the prairie.
     on_site = CAMPUS_BOUNDARY
-    for layer, spacing, radius in (("major_roads", 105.0, far),
+    for layer, spacing, radius in (("major_roads", 105.0, mid),
                                    ("minor_roads", 95.0, 6500.0),
                                    ("site_roads", 80.0, 5200.0)):
         for w in geo.ways(layer, min_pts=2, radius=radius):
@@ -822,30 +845,45 @@ def build_street_lights(col, *, near=1800.0, far=12000.0, cap=4200):
                 in_village = math.hypot(x - VILLAGE_C[0], y - VILLAGE_C[1]) < VILLAGE_R
                 # anything on the campus is pole-lit however far out it is
                 if in_site or in_village:
-                    lamp(x, y + (6.0 if i % 2 else -6.0),
-                         "led" if in_village else "sodium")
+                    lamp(x, y + (6.0 if i % 2 else -6.0), "sodium")
                     n_near += 1
-                    continue
-                # thin them out with distance: a far road reads as a dotted
-                # line of light, not a continuous strip
-                if d > near and rng.random() > 0.55:
                     continue
                 if d <= near:
                     lamp(x, y + (6.0 if i % 2 else -6.0), "sodium")
                     n_near += 1
-                elif n_far < cap:
-                    C.instance(f"lamp_far_{n_far}", head_far, col=col,
+                elif n_mid < mid_cap:
+                    # thin with distance: a far road is a dotted line of light
+                    if d > near * 2 and rng.random() > 0.6:
+                        continue
+                    C.instance(f"lamp_mid_{n_mid}", head_far, col=col,
                                location=(x, y, geo.elev(x, y) + 9.2))
-                    n_far += 1
+                    n_mid += 1
+
+    # 50-mile register, on the tiled trunk network
+    for w in geo.ways("wide_roads", min_pts=2, radius=far + 2000.0):
+        pts = [(p[0], p[1]) for p in w["pts"]]
+        for x, y in _resample(pts, 260.0):
+            d = math.hypot(x, y)
+            if d <= mid or d > far or n_far >= far_cap:
+                continue
+            # spacing grows with distance: keep roughly one point per unit of
+            # projected length rather than per unit of ground length
+            if rng.random() > min(1.0, (mid / d) ** 0.9):
+                continue
+            C.instance(f"lamp_h_{n_far}", head_h, col=col,
+                       location=(x, y, geo.elev(x, y) + 9.2))
+            n_far += 1
+
     # a denser lot/path grid through the Village itself
-    for k in range(90):
+    for k in range(140):
         a = rng.uniform(0, 2 * math.pi)
         r = VILLAGE_R * 0.85 * math.sqrt(rng.random())
         x, y = VILLAGE_C[0] + r * math.cos(a), VILLAGE_C[1] + r * math.sin(a)
-        lamp(x, y, "led" if k % 3 else "sodium")
+        lamp(x, y, "sodium")
         n_near += 1
-    print(f"[site] street lights: {n_near} poles on campus and inside "
-          f"{near / 1000:.1f} km, {n_far} distant points out to {far / 1000:.0f} km")
+    print(f"[site] street lights (all sodium): {n_near} poles on campus and inside "
+          f"{near / 1000:.1f} km, {n_mid} points to {mid / 1000:.0f} km, "
+          f"{n_far} horizon points to {far / 1000:.0f} km ({far / 1609.344:.0f} miles)")
     return lamp
 
 

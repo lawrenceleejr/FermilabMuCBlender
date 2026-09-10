@@ -60,6 +60,10 @@ KEEP = {
     # simplifying them at road tolerance would collapse them to slivers.
     "buildings":   dict(tol=2.0,  radius=6500.0),
     "urban":       dict(tol=30.0, radius=14000.0),
+    # Road lights out to 50 miles. Simplified hard -- at 40 km a bend in a
+    # trunk road is well under a pixel, and what matters is where the line of
+    # light runs, not its curvature.
+    "wide_roads":  dict(tol=90.0, radius=82000.0),
 }
 SETBACK = 250.0                          # tunnel setback from the property line
 

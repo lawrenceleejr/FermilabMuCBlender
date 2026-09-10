@@ -89,6 +89,8 @@ QUERIES = {
         'way["landuse"~"^(residential|commercial|retail|industrial)$"]'
         f'({_bb(NEAR_BOX)}); out geom;'
     ),
+    # fetched tile by tile in fetch_layer, not by this query string
+    "wide_roads": "",
 }
 
 # Layers where an empty result means the query failed rather than that the area
@@ -97,6 +99,30 @@ QUERIES = {
 # empty as a failure here is what turns that into a retry.
 NONEMPTY = {"site", "accel", "water", "wood", "major_roads", "minor_roads",
             "site_roads", "buildings"}
+
+# Road lights are wanted out to 50 miles, and the baked plan only reached 16 km.
+# A single Overpass query over the resulting 161 km square times out -- that box
+# holds most of the Chicago metropolitan area -- so this layer is fetched as a
+# grid of tiles and merged. Motorway, trunk and primary only: at 50 miles a
+# residential street is invisible, and the trunk network is what actually
+# carries a visible line of light.
+WIDE_MILES = 50.0
+WIDE_TILES = 5
+
+
+def wide_tiles(miles=WIDE_MILES, n=WIDE_TILES):
+    R = miles * 1609.344
+    dlat = R / 111320.0
+    dlon = R / (111320.0 * math.cos(math.radians(ORIGIN_LAT)))
+    out = []
+    for i in range(n):
+        for j in range(n):
+            s = ORIGIN_LAT - dlat + 2 * dlat * j / n
+            nn = ORIGIN_LAT - dlat + 2 * dlat * (j + 1) / n
+            w = ORIGIN_LON - dlon + 2 * dlon * i / n
+            e = ORIGIN_LON - dlon + 2 * dlon * (i + 1) / n
+            out.append((s, w, nn, e))
+    return out
 
 # Layers the scene actually needs to be rebuilt; the rest are nice to have.
 ESSENTIAL = ["site", "accel", "water", "wood", "forest", "major_roads"]
@@ -180,8 +206,22 @@ def fetch_layer(key: str, *, refetch=False) -> list:
         print(f"[geo] {key}: cached ({len(w)} ways)")
         return w
     print(f"[geo] {key} ...")
-    res = overpass(QUERIES[key], nonempty=key in NONEMPTY)
-    w = ways(res)
+    if key == "wide_roads":
+        w = []
+        tiles = wide_tiles()
+        for n, (s, west, north, east) in enumerate(tiles, 1):
+            body = ('way["highway"~"^(motorway|trunk|primary)$"]'
+                    f'({s:.4f},{west:.4f},{north:.4f},{east:.4f}); out geom;')
+            try:
+                part = ways(overpass(body, timeout=180, tries=2))
+            except Exception as e:                       # noqa: BLE001
+                print(f"    tile {n}/{len(tiles)} failed: {e}")
+                continue
+            w.extend(part)
+            print(f"    tile {n}/{len(tiles)}: {len(part)} ways (running {len(w)})")
+    else:
+        res = overpass(QUERIES[key], nonempty=key in NONEMPTY)
+        w = ways(res)
     os.makedirs(OUT_DIR, exist_ok=True)
     with open(cp, "w") as fh:
         json.dump(w, fh, separators=(",", ":"))

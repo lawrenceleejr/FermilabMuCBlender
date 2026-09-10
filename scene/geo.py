@@ -137,8 +137,13 @@ def elev(x: float, y: float) -> float:
     rows, n, half, lo, span, datum = d
     u = (x + half) / (2.0 * half) * (n - 1)
     v = (half - y) / (2.0 * half) * (n - 1)            # image rows run north->south
-    if not (0 <= u <= n - 1 and 0 <= v <= n - 1):
-        return 0.0
+    # Clamp rather than return zero. Outside the DEM the ground is the flat
+    # apron that carries to the horizon, and that apron sits at the DEM's own
+    # edge elevation -- roughly -50 to -80 m here. Returning the datum instead
+    # left everything placed out there, the 50-mile road lamps included,
+    # floating tens of metres above the ground they are standing on.
+    u = min(max(u, 0.0), n - 1.0)
+    v = min(max(v, 0.0), n - 1.0)
     i0, j0 = int(u), int(v)
     i1, j1 = min(i0 + 1, n - 1), min(j0 + 1, n - 1)
     fu, fv = u - i0, v - j0
