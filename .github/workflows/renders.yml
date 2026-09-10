@@ -202,14 +202,21 @@ jobs:
           python tools/annotate.py "${{ steps.render.outputs.stem }}.png" \
             --anno "out/ci_${camera}_anno.json" --layout "$camera" \
             --out "${{ steps.render.outputs.stem }}_annotated" \
-            --formats png,pdf,svg --strict
+            --formats png,pdf,svg --strict \
+            --dump-blocks "out/ci_${camera}_blocks.json"
 
       - name: Measure the figure
         if: matrix.annotate
         run: |
+          # --blocks carries the measured type boxes, so the WCAG reading is
+          # taken against the pixels actually behind each label. Two of the
+          # three failures it first caught were only visible at one resolution,
+          # so it matters that CI takes this reading rather than trusting a
+          # local one.
           python tools/check_figure.py "${{ steps.render.outputs.stem }}_annotated.png" \
             --base "${{ steps.render.outputs.stem }}.png" \
             --anno "out/ci_${{ steps.render.outputs.camera }}_anno.json" \
+            --blocks "out/ci_${{ steps.render.outputs.camera }}_blocks.json" \
             | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Scene summary
