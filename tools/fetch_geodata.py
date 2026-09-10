@@ -206,6 +206,7 @@ def fetch_layer(key: str, *, refetch=False) -> list:
         print(f"[geo] {key}: cached ({len(w)} ways)")
         return w
     print(f"[geo] {key} ...")
+    missing: list[int] = []
     if key == "wide_roads":
         # Each tile is cached on its own. The heavy tiles -- the ones over the
         # Chicago metropolitan area -- time out repeatedly, and without per-tile
@@ -215,7 +216,6 @@ def fetch_layer(key: str, *, refetch=False) -> list:
         # which had silently written an empty tile.
         w = []
         tiles = wide_tiles()
-        missing = []
         for n, (s, west, north, east) in enumerate(tiles, 1):
             tp = os.path.join(OUT_DIR, f"_tile_wide_{n:02d}.json")
             if os.path.exists(tp) and not refetch:
@@ -236,16 +236,23 @@ def fetch_layer(key: str, *, refetch=False) -> list:
                 json.dump(part, fh, separators=(",", ":"))
             w.extend(part)
             print(f"    tile {n}/{len(tiles)}: {len(part)} ways (running {len(w)})")
-        if missing:
-            print(f"    tiles still missing: {missing} -- rerun "
-                  f"`--layer wide_roads` to fill them in")
     else:
         res = overpass(QUERIES[key], nonempty=key in NONEMPTY)
         w = ways(res)
+    summarise(key, w)
+    if missing:
+        # Do NOT write the layer cache while tiles are outstanding. It was
+        # written regardless, and since fetch_layer short-circuits on the layer
+        # cache before ever reaching the per-tile logic, that masked the gap
+        # completely: the advice to "rerun to fill them in" did nothing, because
+        # the rerun returned the cached layer and never looked at the tiles.
+        # Leaving the layer uncached is what makes a rerun actually retry.
+        print(f"    tiles still missing: {missing} -- rerun `--layer {key}` to "
+              "fill them in (the layer stays uncached until they are all in)")
+        return w
     os.makedirs(OUT_DIR, exist_ok=True)
     with open(cp, "w") as fh:
         json.dump(w, fh, separators=(",", ":"))
-    summarise(key, w)
     return w
 
 
