@@ -206,14 +206,16 @@ def axes_dir(vec_px, width, height):
     return dx_px / width, -dy_px / height
 
 
-def draw_title(ax, F, s):
+def draw_title(ax, F, s, copy=None):
     scrim(ax, 0.0, 0.58, 0.66, 1.0, strength=0.68, direction="left")
     x = 0.038
-    text(ax, x, 0.950, spaced(TITLE["eyebrow"]), F["sans_med"], TYPE["eyebrow"], ACCENT["collider"], s, va="top")
-    text(ax, x, 0.905, TITLE["title"], F["sans_light"], TYPE["title"], INK, s, va="top")
+    copy = copy or TITLE
+    if copy.get("eyebrow"):
+        text(ax, x, 0.950, spaced(copy["eyebrow"]), F["sans_med"], TYPE["eyebrow"], ACCENT["collider"], s, va="top")
+    text(ax, x, 0.905, copy["title"], F["sans_light"], TYPE["title"], INK, s, va="top")
     ax.plot([x, x + 0.075], [0.822, 0.822], transform=ax.transAxes, color=ACCENT["collider"],
             lw=1.7 * s, solid_capstyle="butt", zorder=8)
-    text(ax, x, 0.797, TITLE["deck"], F["sans"], TYPE["deck"], INK_DIM, s, va="top")
+    text(ax, x, 0.797, copy["deck"], F["sans"], TYPE["deck"], INK_DIM, s, va="top")
 
 
 def draw_footer(ax, F, s, anno):
@@ -229,8 +231,11 @@ def draw_footer(ax, F, s, anno):
     ax.plot([0.0, 1.0], [0.118, 0.118], transform=ax.transAxes, color=INK,
             lw=0.7 * s, alpha=0.22, zorder=7)
 
-    text(ax, 0.038, 0.082, "Fermilab — proposed muon collider", F["sans_med"], TYPE["label"], INK, s)
-    text(ax, 0.038, 0.053, "Site overview, looking south-south-west", F["sans"], TYPE["metric"], INK_DIM, s)
+    foot = anno.get("_footer") or {}
+    text(ax, 0.038, 0.082, foot.get("left", "Fermilab — proposed muon collider"),
+         F["sans_med"], TYPE["label"], INK, s)
+    text(ax, 0.038, 0.053, foot.get("sub", "Site overview, looking south-south-west"),
+         F["sans"], TYPE["metric"], INK_DIM, s)
 
     sun_a = sky.get("sun_altitude_deg", float("nan"))
     sun_z = sky.get("sun_azimuth_deg", float("nan"))
@@ -349,6 +354,8 @@ def build(args) -> int:
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
 
+    anno["_footer"] = {k: v for k, v in (("left", args.footer), ("sub", args.subtitle)) if v}
+
     if args.debug:
         for key, f in anno.get("features", {}).items():
             x, y = f["x"], 1.0 - f["y"]
@@ -359,7 +366,11 @@ def build(args) -> int:
             ax.axvline(gx, color="#FF3B3055", lw=0.6 * s, zorder=4)
             ax.axhline(gx, color="#FF3B3055", lw=0.6 * s, zorder=4)
     else:
-        draw_title(ax, F, s)
+        draw_title(ax, F, s, copy=dict(
+            eyebrow=args.eyebrow if args.eyebrow is not None else TITLE["eyebrow"],
+            title=args.title or TITLE["title"],
+            deck=(args.deck.replace("\\n", "\n") if args.deck else TITLE["deck"]),
+        ))
         draw_footer(ax, F, s, anno)
         draw_scale_and_north(ax, F, s, anno, width, height)
         draw_features(ax, F, s, anno, args.layout, width, height)
@@ -384,6 +395,13 @@ def main() -> int:
     p.add_argument("--out", default="", help="output path stem (default: <image>_annotated)")
     p.add_argument("--formats", default="png", help="comma list: png,pdf,svg")
     p.add_argument("--debug", action="store_true", help="mark raw anchors and a decile grid")
+    p.add_argument("--title", default="", help="override the title line")
+    p.add_argument("--eyebrow", default=None,
+                   help="override the institutional line above the title; pass '' to omit it, "
+                        "which is the right call if the figure should not read as an official lab document")
+    p.add_argument("--deck", default="", help="override the standfirst; \\n splits lines")
+    p.add_argument("--footer", default="", help="override the footer's left-hand line")
+    p.add_argument("--subtitle", default="", help="override the footer's second line")
     return build(p.parse_args())
 
 
