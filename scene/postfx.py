@@ -99,6 +99,26 @@ def configure_output(scene, *, width, height, path, exposure=0.0, look="AgX - Pu
     scene.display_settings.display_device = "sRGB"
 
 
+def _set_inputs(node, pairs, where):
+    """Set node input sockets by name, saying so when a name does not exist.
+
+    The pattern this replaces was `if name in node.inputs: ...`, which skips an
+    unknown name in silence. Blender renamed the glare sockets between versions
+    and the streak pass was written against "Streak Angle" where 5.2 calls it
+    "Streaks Angle" -- so the setting was dropped and the render came out with a
+    default that nothing in the log mentioned. A skipped setting is now visible.
+    """
+    for name, val in pairs:
+        if name in node.inputs:
+            try:
+                node.inputs[name].default_value = val
+            except Exception as e:  # noqa: BLE001
+                print(f"[postfx] {where}: {name} = {val!r} rejected: {e}")
+        else:
+            print(f"[postfx] {where}: no input named {name!r}; "
+                  f"available: {[i.name for i in node.inputs]}")
+
+
 def build_compositor(scene, *, bloom_strength=0.30, bloom_size=0.65, bloom_threshold=0.8,
                      streak_strength=0.16, streak_threshold=2.2,
                      dispersion=0.012, distortion=-0.004, vignette=0.28):
@@ -130,9 +150,9 @@ def build_compositor(scene, *, bloom_strength=0.30, bloom_size=0.65, bloom_thres
             glare.inputs[name].default_value = val
         except Exception:  # noqa: BLE001
             pass
-    for name, val in (("Threshold", bloom_threshold), ("Strength", bloom_strength), ("Size", bloom_size), ("Saturation", 0.9), ("Smoothness", 0.15)):
-        if name in glare.inputs:
-            glare.inputs[name].default_value = val
+    _set_inputs(glare, (("Threshold", bloom_threshold), ("Strength", bloom_strength),
+                        ("Size", bloom_size), ("Saturation", 0.9), ("Smoothness", 0.15)),
+                "bloom")
     links.new(img, glare.inputs["Image"])
     img = glare.outputs["Image"]
 
@@ -143,9 +163,8 @@ def build_compositor(scene, *, bloom_strength=0.30, bloom_size=0.65, bloom_thres
         glare2.inputs["Quality"].default_value = "High"
     except Exception:  # noqa: BLE001
         pass
-    for name, val in (("Threshold", 3.0), ("Strength", 0.15), ("Size", 0.28), ("Saturation", 0.8), ("Smoothness", 0.1)):
-        if name in glare2.inputs:
-            glare2.inputs[name].default_value = val
+    _set_inputs(glare2, (("Threshold", 3.0), ("Strength", 0.15), ("Size", 0.28),
+                         ("Saturation", 0.8), ("Smoothness", 0.1)), "bloom tight")
     links.new(img, glare2.inputs["Image"])
     img = glare2.outputs["Image"]
 
@@ -163,11 +182,10 @@ def build_compositor(scene, *, bloom_strength=0.30, bloom_size=0.65, bloom_thres
             st.inputs["Quality"].default_value = "High"
         except Exception:  # noqa: BLE001
             pass
-        for name, val in (("Threshold", streak_threshold), ("Strength", streak_strength),
-                          ("Size", 0.20), ("Streaks", 4), ("Streak Angle", 0.35),
-                          ("Fade", 0.88), ("Color Modulation", 0.22), ("Iterations", 3)):
-            if name in st.inputs:
-                st.inputs[name].default_value = val
+        _set_inputs(st, (("Threshold", streak_threshold), ("Strength", streak_strength),
+                         ("Size", 0.20), ("Streaks", 4), ("Streaks Angle", 0.35),
+                         ("Fade", 0.88), ("Color Modulation", 0.22), ("Iterations", 3)),
+                    "streaks")
         links.new(img, st.inputs["Image"])
         img = st.outputs["Image"]
 
