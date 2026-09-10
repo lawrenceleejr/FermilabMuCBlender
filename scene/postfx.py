@@ -1,7 +1,7 @@
 """Cycles settings, colour management and the compositor look.
 
 Compositor (Blender 5.x node-group API): Render Layers -> Bloom glare ->
-gentle chromatic aberration -> vignette -> Group Output.
+streak glare -> gentle chromatic aberration -> vignette -> Group Output.
 """
 from __future__ import annotations
 
@@ -116,7 +116,9 @@ def configure_output(scene, *, width, height, path, exposure=0.0, look="AgX - Pu
     scene.display_settings.display_device = "sRGB"
 
 
-def build_compositor(scene, *, bloom_strength=0.30, bloom_size=0.65, bloom_threshold=0.8, dispersion=0.012, distortion=-0.004, vignette=0.28):
+def build_compositor(scene, *, bloom_strength=0.30, bloom_size=0.65, bloom_threshold=0.8,
+                     streak_strength=0.16, streak_threshold=2.2,
+                     dispersion=0.012, distortion=-0.004, vignette=0.28):
     ng = bpy.data.node_groups.new("Compositing", "CompositorNodeTree")
     ng.interface.new_socket(name="Image", in_out="OUTPUT", socket_type="NodeSocketColor")
     scene.compositing_node_group = ng
@@ -163,6 +165,28 @@ def build_compositor(scene, *, bloom_strength=0.30, bloom_size=0.65, bloom_thres
             glare2.inputs[name].default_value = val
     links.new(img, glare2.inputs["Image"])
     img = glare2.outputs["Image"]
+
+    # --- twinkle: streaks on the hottest points ------------------------------
+    # Bloom gives a highlight a soft halo, which is what a lamp close by looks
+    # like. It is not what a light 40 km away looks like: that light is a point
+    # source seen through kilometres of turbulent air, and what the eye reads
+    # as twinkle is the diffraction spike, not the halo. Four short streaks at
+    # a high threshold put spikes on the far road lighting and the brighter
+    # stars and leave everything else alone.
+    if streak_strength > 0:
+        st = nodes.new("CompositorNodeGlare")
+        try:
+            st.inputs["Type"].default_value = "Streaks"
+            st.inputs["Quality"].default_value = "High"
+        except Exception:  # noqa: BLE001
+            pass
+        for name, val in (("Threshold", streak_threshold), ("Strength", streak_strength),
+                          ("Size", 0.20), ("Streaks", 4), ("Streak Angle", 0.35),
+                          ("Fade", 0.88), ("Color Modulation", 0.22), ("Iterations", 3)):
+            if name in st.inputs:
+                st.inputs[name].default_value = val
+        links.new(img, st.inputs["Image"])
+        img = st.outputs["Image"]
 
     # --- lens: faint chromatic aberration / barrel ------------------------------
     ld = nodes.new("CompositorNodeLensdist")
