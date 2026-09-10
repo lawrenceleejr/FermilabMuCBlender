@@ -94,6 +94,46 @@ Sky modes (`--sky`):
 * `nishita` — the twilight sky alone, no stars.
 * `hdri` — a Poly Haven sky HDRI, rotated by `--sky-rot`.
 
+## Labelled figures
+
+`tools/annotate.py` composes a presentation figure over a finished render:
+callouts on elbow leaders, a title block, a footer carrying the instant and
+solar geometry, a scale bar and a north needle.
+
+```sh
+./render.sh --gpu --final --camera overview \
+    --annotations out/overview.json --out renders/site_overview.png
+python3 tools/get_fonts.py                       # once: self-hosted IBM Plex TTFs
+python3 tools/annotate.py renders/site_overview.png \
+    --anno out/overview.json --layout overview --formats png,pdf,svg
+```
+
+Blender's compositor has no text node, so annotating *inside* Blender would
+mean 3D text objects that get lit, fogged and perspective-warped, with almost
+no typographic control. Keeping Cycles for the beauty pass and annotating in
+2D is both the studio practice and the only route to real type — and the PDF
+and SVG stay editable in Illustrator or Inkscape.
+
+What keeps it honest rather than decorative:
+
+* **Labels cannot drift off their subjects.** `build_scene.py --annotations`
+  projects each anchor through the render camera itself and writes normalised
+  coordinates, so the layout is resolution-independent and a moved camera
+  moves the leaders with it.
+* **Ring and boundary anchors place themselves.** Give a curve and a screen
+  target; every sample is projected and the leader attaches to whichever lands
+  nearest that target, so a label sits on a clear stretch of its own arc
+  instead of a hard-coded angle that goes quietly wrong later.
+* **Nothing is labelled that cannot be seen.** The Main Injector berm was
+  unlit prairie and the linac a sub-pixel tube, so both got markers in the
+  scene rather than leaders pointing at empty ground.
+* **The scale bar is qualified.** A perspective view has no single scale, so
+  the bar is measured at the site centre and says so; the north needle follows
+  the true projected ground bearing, which is why it tilts.
+* **Type does the hierarchy.** One 1.25 modular scale, IBM Plex Sans for words
+  and Plex Mono for figures, colour only confirming a label's subject — so it
+  still reads in greyscale.
+
 ## What is in the scene
 
 | Layer | How it is built |
