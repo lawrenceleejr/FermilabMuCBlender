@@ -75,13 +75,19 @@ if [[ $want_movie -eq 1 ]]; then
   # 450 frames at 1024 spp is days of GPU; 320 with a loose adaptive threshold
   # denoises to something a projector cannot tell apart on a moving image.
   margs+=(--samples "${MOVIE_SAMPLES:-320}" --adaptive-threshold 0.01)
-  # Streaks off entirely for movies. The glare pass is thresholded, so on a
-  # moving camera each sub-pixel lamp gains and loses its four-armed star as it
-  # crosses that threshold, and the far field flashes. 5 % was tried first and
-  # was still too much. The same pass is what gives a still its diffraction
-  # spikes, so it is disabled here rather than globally, and the stills keep
-  # theirs at 0.16. MOVIE_STREAKS puts a trace back if one is ever wanted.
-  margs+=(--streak-strength "${MOVIE_STREAKS:-0.0}")
+  # Streaks at 5 % of the stills setting: a trace of scintillation on the
+  # brightest points and no more. The glare pass is thresholded, so on a moving
+  # camera each sub-pixel lamp gains and loses its four-armed star as it
+  # crosses that threshold -- which is the mechanism that reads as twinkle, and
+  # why the movie wants a fraction of what a still does.
+  #
+  # This value took a detour worth recording. It was set to 0.008, judged far
+  # too strong, and taken to 0. But the judgement was made on a render that
+  # also had an animated sampling seed, which re-rolls the noise on every frame
+  # across 20 000 sub-pixel emitters -- a far larger effect, and the real
+  # culprit. With the seed fixed, 0.008 is the trace it was always meant to be.
+  # MOVIE_STREAKS halves or doubles it without touching the stills.
+  margs+=(--streak-strength "${MOVIE_STREAKS:-0.008}")
   echo "[render.sh] movie: ${MOVIE_SECONDS:-15}s at ${MOVIE_FPS:-30} fps, camera $camera"
   "$BLENDER" -b -P "$HERE/scene/build_scene.py" -- "${args[@]}" "${margs[@]}"
   if command -v ffmpeg >/dev/null 2>&1; then
