@@ -828,7 +828,7 @@ def build_village(col):
 
 
 def build_street_lights(col, *, near=1800.0, mid=16000.0, far=80500.0,
-                        mid_cap=6000, far_cap=19000):
+                        mid_cap=6000, far_cap=19000, twinkle=0.05):
     """Lights on the roads that exist, out to 50 miles, in three registers.
 
     The registers exist because a street lamp cannot be drawn at every scale in
@@ -846,6 +846,13 @@ def build_street_lights(col, *, near=1800.0, mid=16000.0, far=80500.0,
 
     Everything is warm: sodium at 2150 K throughout, campus and Village
     included.
+
+    `twinkle` scintillates the two distant registers and not the near one. That
+    split is the physics: a light twinkles because of the air between it and
+    the eye, so a lamp 40 km away across the whole depth of the atmosphere does
+    and one on the campus road below the camera does not. It is also what keeps
+    the effect where it reads -- the far registers are the sub-pixel points
+    that look like stars, and the near ones are resolved luminaires on poles.
     """
     lamp = _lamp_factory(col)
     # Three brightnesses per distant register, not one.
@@ -865,7 +872,7 @@ def build_street_lights(col, *, near=1800.0, mid=16000.0, far=80500.0,
         heads = []
         for i, (mul, tint) in enumerate(tints):
             m = C.emissive_material(f"{name}_{i}", tint, strength * mul,
-                                    camera_strength=cam * mul)
+                                    camera_strength=cam * mul, twinkle=twinkle)
             me = C.sphere_mesh_data(f"{name}_head_{i}", mesh_r)
             me.materials.append(m)
             heads.append(me)
