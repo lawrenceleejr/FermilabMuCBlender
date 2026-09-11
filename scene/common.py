@@ -215,10 +215,28 @@ def flat_material(name, color, *, roughness=0.6, metallic=0.0, emission=None, em
     return mat
 
 
-def emissive_material(name, color, strength, *, camera_strength=None):
+def emissive_material(name, color, strength, *, camera_strength=None,
+                      twinkle=0.0, twinkle_speed=0.85):
     """Pure emitter. `camera_strength` lets the visible core differ from the
     light it casts (Light Path > Is Camera Ray), which keeps glowing tubes
-    readable without blowing out the fog around them."""
+    readable without blowing out the fog around them.
+
+    `twinkle` modulates the strength by +/- that fraction, per object and over
+    time, which is scintillation: a distant light seen through kilometres of
+    turbulent air varies in brightness, and it does so whether or not anyone is
+    moving. That last part is the point. The alternatives both fail it -- a
+    glare pass only twinkles because the camera drags lamps across its
+    threshold, and an animated sampling seed is not the light varying at all
+    but the renderer's noise, applied to every pixel in the frame at an
+    amplitude nobody chose. This varies the emitter, so it works on a locked-off
+    camera, it is confined to the lamps, and its size is a number.
+
+    Each object gets its own phase from Object Info > Random, so 20 000 lamps
+    scintillate independently rather than pulsing as one. Time comes from a
+    driver on `frame`: a still therefore renders a fixed, reproducible sample
+    of the noise, indistinguishable from the per-lamp brightness spread that is
+    already there.
+    """
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     nt = mat.node_tree
@@ -227,11 +245,46 @@ def emissive_material(name, color, strength, *, camera_strength=None):
     em = nt.nodes.new("ShaderNodeEmission")
     em.inputs["Color"].default_value = (*color, 1.0)
     if camera_strength is None:
-        em.inputs["Strength"].default_value = strength
+        s_sock, s_val = None, strength
     else:
         lp = nt.nodes.new("ShaderNodeLightPath")
-        _, s = mix_float(nt, lp.outputs["Is Camera Ray"], strength, camera_strength)
-        nt.links.new(s, em.inputs["Strength"])
+        _, s_sock = mix_float(nt, lp.outputs["Is Camera Ray"], strength, camera_strength)
+        s_val = None
+
+    if twinkle > 0.0:
+        info = nt.nodes.new("ShaderNodeObjectInfo")
+        # a per-object offset, so neighbouring lamps are at different phases
+        seed = nmath(nt, "MULTIPLY", info.outputs["Random"], value_b=97.0)
+        vec = nt.nodes.new("ShaderNodeCombineXYZ")
+        nt.links.new(seed.outputs[0], vec.inputs["X"])
+        clock = nt.nodes.new("ShaderNodeValue")
+        clock.label = "frame"
+        try:
+            drv = clock.outputs[0].driver_add("default_value").driver
+            drv.type = "SCRIPTED"
+            drv.expression = "frame"
+        except Exception as e:  # noqa: BLE001
+            print(f"[common] {name}: no frame driver ({e}); twinkle will be static")
+        t = nmath(nt, "MULTIPLY", clock.outputs[0], value_b=twinkle_speed / 30.0)
+        n = nt.nodes.new("ShaderNodeTexNoise")
+        n.noise_dimensions = "4D"
+        n.inputs["Scale"].default_value = 1.0
+        n.inputs["Detail"].default_value = 1.0
+        nt.links.new(vec.outputs["Vector"], n.inputs["Vector"])
+        nt.links.new(t.outputs[0], n.inputs["W"])
+        # Fac in [0,1] -> [1 - twinkle, 1 + twinkle]
+        f = nmath(nt, "MULTIPLY_ADD", n.outputs["Fac"], value_b=2.0 * twinkle)
+        f.inputs[2].default_value = 1.0 - twinkle
+        if s_sock is None:
+            s_sock = nmath(nt, "MULTIPLY", f.outputs[0], value_b=s_val).outputs[0]
+            s_val = None
+        else:
+            s_sock = nmath(nt, "MULTIPLY", s_sock, f.outputs[0]).outputs[0]
+
+    if s_sock is None:
+        em.inputs["Strength"].default_value = s_val
+    else:
+        nt.links.new(s_sock, em.inputs["Strength"])
     nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
     return mat
 
