@@ -10,6 +10,11 @@ existing plant and are already in the ground, which is the same distinction the
 still figure makes with colour -- letting them drop in too would say something
 false about the site.
 
+The drop eases *out* only: each ring is already falling at full speed when its
+segment opens and decelerates into the ground. Ease-in-out made them creep away
+from their start height, which wasted the top of each group's window on motion
+too slow to see and left the landing abrupt by comparison.
+
 Each group gets its own start height, start frame and duration, so they do not
 arrive as a set: at the midpoint of the clip the six are at 212, 105, 385, 282,
 411 and 350 m, and they touch down across four seconds rather than together.
@@ -66,7 +71,7 @@ def animate_descent(scene, frames, *, groups=DESCENT):
             for fc in C.action_fcurves(o.animation_data.action):
                 for kp in fc.keyframe_points:
                     kp.interpolation = "SINE"
-                    kp.easing = "EASE_IN_OUT"
+                    kp.easing = "EASE_OUT"
                 fc.update()
         report.append((label, len(objs), z0, start, land))
     return report

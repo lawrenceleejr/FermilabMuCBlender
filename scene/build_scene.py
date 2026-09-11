@@ -35,6 +35,8 @@ Options (after the `--`):
   --fog-density D        ground fog peak density per metre (default 3.2e-3)
   --no-fog               disable the ground-fog volume
   --no-haze              disable the aerial haze volume (--haze-density D to tune)
+  --hold SEC             with --animate, hold the final pose for SEC seconds after
+                         the move (default 1.5)
   --streak-strength S    glare streaks on point lights (default 0.16; render.sh uses
                          0.008 for movies, where the effect flickers frame to frame)
   --tree-density F       scale tree counts (default 1.0; 0.3 for quick previews)
@@ -133,6 +135,10 @@ def parse_args():
     p.add_argument("--streak-strength", type=float, default=0.16,
                    help="glare streaks on the brightest points; 0 disables them. "
                         "Much lower for animation than for stills -- see the note in the source")
+    p.add_argument("--hold", type=float, default=1.5,
+                   help="seconds of stillness on the final pose after the move "
+                        "(--animate only); the held frames carry no keyframes, so "
+                        "they are the final composition exactly")
     p.add_argument("--animate", type=float, default=0.0,
                    help="render a camera-approach movie of this many seconds instead of a still")
     p.add_argument("--fps", type=int, default=30, help="frame rate for --animate")
@@ -393,7 +399,18 @@ def main():
         # and a GPU pass long enough to matter is exactly the kind that dies.
         # ffmpeg turns the sequence into an mp4 in seconds afterwards.
         start, end, frames = camera_rig.animate_approach(
-            cam, scene, args.camera, seconds=args.animate, fps=args.fps)
+            cam, scene, args.camera, seconds=args.animate, fps=args.fps,
+            hold=args.hold)
+        # An animated sampling seed, which is off by Blender's default.
+        #
+        # Two reasons, and the second is the one that was asked for. With a
+        # fixed seed the Monte Carlo noise is identical every frame, so it sits
+        # still in screen space while the image moves under it -- it reads as a
+        # dirty lens rather than as grain. And in the held final frames nothing
+        # moves at all, so a fixed seed renders every held frame byte for byte
+        # identical: perfectly static, with no shimmer of any kind to capture.
+        # Animating it is what makes the hold live.
+        scene.cycles.use_animated_seed = True
         # Motion blur off for the move. It is enabled as house style because a
         # still has nothing moving in it, so it costs nothing there. Here it
         # costs BVH work on 50 000 objects across every frame and buys nothing:
@@ -411,8 +428,10 @@ def main():
         os.makedirs(stem, exist_ok=True)
         scene.render.filepath = os.path.join(stem, "frame_")
         scene.render.image_settings.file_format = "PNG"
-        print(f"[render] animating {args.animate:.0f}s at {args.fps} fps "
-              f"= {frames} frames, {w}x{h}, {args.samples} spp")
+        print(f"[render] animating {args.animate:.0f}s move + {args.hold:.1f}s hold "
+              f"at {args.fps} fps = {scene.frame_end} frames "
+              f"({frames} moving, {scene.frame_end - frames} held), "
+              f"{w}x{h}, {args.samples} spp")
         print(f"[render]   from {tuple(round(v) for v in start)} "
               f"to {tuple(round(v) for v in end)}")
         print(f"[render]   frames -> {scene.render.filepath}####.png")
