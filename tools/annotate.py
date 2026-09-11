@@ -392,7 +392,7 @@ def spaced(text: str, wide: bool = False) -> str:
 # --------------------------------------------------------------------------- #
 # helpers
 # --------------------------------------------------------------------------- #
-def vignette(ax, anno, width, height, *, strength=0.88, r0=0.16, r1=0.58,
+def vignette(ax, anno, width, height, *, strength=0.88, r0=0.128, r1=0.62,
              stretch=1.12, zorder=1):
     """A lens vignette: radial, centred on the subject, sized to spare it.
 
@@ -417,23 +417,26 @@ def vignette(ax, anno, width, height, *, strength=0.88, r0=0.16, r1=0.58,
     between so the derivative is zero at both ends and neither the start nor
     the top of the ramp shows as a ring.
 
-    The ramp is long and starts early -- 0.16 to 0.58 of the frame width, where
+    The ramp is long and starts early -- 0.128 to 0.62 of the frame width, where
     a first attempt used 0.285 to 0.44 -- because a short one reads as a
     spotlight with the subject cut out of it rather than as a lens.
 
-    r1 is not 0.496. Scaling both radii down by 20 % together keeps the shape
-    and shortens the ramp to 0.336, and at that steepness the falloff becomes
-    visible as a ring: the seam test read 8.94 L against its 8.0 threshold, on
-    a noise floor of 5 to 6. Holding r0 at 0.16 and lengthening r1 instead
-    brings the bright centre in without that -- 0.54 measures 7.50, still above
-    the floor, and 0.58 measures 6.31, which is the floor.
+    Only r0 has come in across two rounds of tightening, and the ramp has been
+    lengthened each time to suit. That is not tidiness. Scaling both radii
+    together keeps the vignette's shape and shortens the ramp in proportion,
+    and at a ramp of 0.336 the falloff becomes visible as a ring -- the seam
+    test read 8.94 L against its 8.0 threshold, on a noise floor of 5 to 6.
+    Lengthening r1 buys that back and costs the subject less at the same time:
+    at r0 = 0.128 the seam reads 7.11 L with r1 at 0.58 and 5.72 L with it at
+    0.62, which is the floor.
 
     Starting inside the subject has a price and it is worth writing down.
-    Integrated over the site polygon the alpha averages 0.0064 and peaks at
-    0.117: the site loses 0.64 % of its luminance on average, which is
-    invisible, and 11.7 % at its single worst pixel, out on the boundary
-    ribbon's far corner. At 0.20 to 0.62 those were 0.0008 and 0.043. The trade
-    is deliberate; if the site's corner ever looks dim, this is what to move.
+    Integrated over the site polygon the alpha averages 0.0138 and peaks at
+    0.148: the site loses 1.4 % of its luminance on average, which is still
+    invisible, and 14.8 % at its single worst pixel, out on the boundary
+    ribbon's far corner. Across the three settings this has been through --
+    r0 at 0.20, 0.16 and 0.128 -- that worst pixel has gone 4.3 %, 11.7 %,
+    14.8 %. r0 is the lever if it ever reads as dim.
 
     Alpha composites in display space, so nothing here can lift a value: the
     site keeps its own tone and everything outboard of it loses some.
