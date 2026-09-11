@@ -37,6 +37,7 @@ Options (after the `--`):
   --no-haze              disable the aerial haze volume (--haze-density D to tune)
   --hold SEC             with --animate, hold the final pose for SEC seconds after
                          the move (default 1.5)
+  --animated-seed        re-roll the sampling seed each frame (off; it reads as twinkle)
   --streak-strength S    glare streaks on point lights (default 0.16; render.sh uses
                          0.008 for movies, where the effect flickers frame to frame)
   --tree-density F       scale tree counts (default 1.0; 0.3 for quick previews)
@@ -136,6 +137,11 @@ def parse_args():
     p.add_argument("--streak-strength", type=float, default=0.16,
                    help="glare streaks on the brightest points; 0 disables them. "
                         "Much lower for animation than for stills -- see the note in the source")
+    p.add_argument("--animated-seed", action="store_true",
+                   help="vary the sampling seed per frame (--animate only). Off by "
+                        "default: it re-rolls the noise on every frame, which across "
+                        "20 000 sub-pixel emitters reads as twinkle. With it off the "
+                        "held final frames are identical to each other.")
     p.add_argument("--hold", type=float, default=1.5,
                    help="seconds of stillness on the final pose after the move "
                         "(--animate only); the held frames carry no keyframes, so "
@@ -402,16 +408,18 @@ def main():
         start, end, frames = camera_rig.animate_approach(
             cam, scene, args.camera, seconds=args.animate, fps=args.fps,
             hold=args.hold)
-        # An animated sampling seed, which is off by Blender's default.
+        # The sampling seed stays fixed unless asked for, which is Blender's
+        # default and the opposite of what this did for one revision.
         #
-        # Two reasons, and the second is the one that was asked for. With a
-        # fixed seed the Monte Carlo noise is identical every frame, so it sits
-        # still in screen space while the image moves under it -- it reads as a
-        # dirty lens rather than as grain. And in the held final frames nothing
-        # moves at all, so a fixed seed renders every held frame byte for byte
-        # identical: perfectly static, with no shimmer of any kind to capture.
-        # Animating it is what makes the hold live.
-        scene.cycles.use_animated_seed = True
+        # It was turned on to give the held final frames something to show:
+        # nothing in this scene animates the lights, so with a fixed seed a
+        # static hold renders every frame byte for byte identical. What it
+        # actually delivers is a fresh noise field every frame across 20 000
+        # sub-pixel emitters, and that is not grain, it is the twinkle itself.
+        # A fixed seed costs the hold its shimmer -- the held frames are
+        # genuinely frozen -- and that is the right trade when the brief is to
+        # turn the twinkle off.
+        scene.cycles.use_animated_seed = args.animated_seed
         # Motion blur off for the move. It is enabled as house style because a
         # still has nothing moving in it, so it costs nothing there. Here it
         # costs BVH work on 50 000 objects across every frame and buys nothing:

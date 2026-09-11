@@ -75,12 +75,13 @@ if [[ $want_movie -eq 1 ]]; then
   # 450 frames at 1024 spp is days of GPU; 320 with a loose adaptive threshold
   # denoises to something a projector cannot tell apart on a moving image.
   margs+=(--samples "${MOVIE_SAMPLES:-320}" --adaptive-threshold 0.01)
-  # Streaks at 5 % of the stills setting. The glare pass is thresholded, so on
-  # a moving camera each sub-pixel lamp gains and loses its four-armed star as
-  # it crosses that threshold, and the far field flashes. The same pass is what
-  # gives a still its diffraction spikes, so it is turned down here rather than
-  # removed, and the stills keep theirs.
-  margs+=(--streak-strength "${MOVIE_STREAKS:-0.008}")
+  # Streaks off entirely for movies. The glare pass is thresholded, so on a
+  # moving camera each sub-pixel lamp gains and loses its four-armed star as it
+  # crosses that threshold, and the far field flashes. 5 % was tried first and
+  # was still too much. The same pass is what gives a still its diffraction
+  # spikes, so it is disabled here rather than globally, and the stills keep
+  # theirs at 0.16. MOVIE_STREAKS puts a trace back if one is ever wanted.
+  margs+=(--streak-strength "${MOVIE_STREAKS:-0.0}")
   echo "[render.sh] movie: ${MOVIE_SECONDS:-15}s at ${MOVIE_FPS:-30} fps, camera $camera"
   "$BLENDER" -b -P "$HERE/scene/build_scene.py" -- "${args[@]}" "${margs[@]}"
   if command -v ffmpeg >/dev/null 2>&1; then
