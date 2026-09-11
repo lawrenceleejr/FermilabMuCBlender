@@ -140,16 +140,27 @@ APPROACH = {
 }
 
 
-def animate_approach(cam_obj, scene, preset, *, seconds=15.0, fps=30):
+def animate_approach(cam_obj, scene, preset, *, seconds=15.0, fps=30, hold=0.0):
     """Keyframe a camera move from its APPROACH pose into the preset pose.
 
-    Two keyframes on a sine ease-in-out rather than a long path: the brief asks
-    for subtle, and a two-pose ease is what reads as a slow settle rather than
-    a fly-through. Rotation is keyframed alongside position, computed by aiming
+    Two keyframes on a sine ease rather than a long path: the brief asks for
+    subtle, and a two-pose ease is what reads as a slow settle rather than a
+    fly-through. Rotation is keyframed alongside position, computed by aiming
     at the same target from each end, so the tilt change is exactly the
     consequence of the rise and nothing else moves.
 
-    Returns (start_location, end_location, frames).
+    Ease *out* only. With EASE_IN_OUT the clip opened on a camera barely
+    moving, which spends its first second saying nothing; easing out alone
+    starts at full speed and decelerates into the final pose, so the viewer
+    arrives mid-move and watches it settle.
+
+    `hold` adds seconds of stillness after the move. The extra frames carry no
+    keyframes and Blender's default constant extrapolation holds the last pose
+    exactly, so the held frames are the final composition and nothing drifts.
+
+    Returns (start_location, end_location, frames), where `frames` is the
+    length of the *move* -- the descent maps its own fractions onto that, and
+    would otherwise stretch its landings into the hold.
     """
     p = PRESETS[preset]
     start = APPROACH.get(preset, {}).get("location")
@@ -157,8 +168,9 @@ def animate_approach(cam_obj, scene, preset, *, seconds=15.0, fps=30):
         raise KeyError(f"no APPROACH pose for camera preset {preset!r}; add one "
                        "solved against the framing model rather than guessed")
     frames = max(int(round(seconds * fps)), 2)
+    held = max(int(round(hold * fps)), 0)
     scene.frame_start = 1
-    scene.frame_end = frames
+    scene.frame_end = frames + held
     scene.render.fps = fps
 
     for frame, loc in ((1, start), (frames, p["location"])):
@@ -170,7 +182,7 @@ def animate_approach(cam_obj, scene, preset, *, seconds=15.0, fps=30):
     for fc in C.action_fcurves(cam_obj.animation_data.action):
         for kp in fc.keyframe_points:
             kp.interpolation = "SINE"
-            kp.easing = "EASE_IN_OUT"
+            kp.easing = "EASE_OUT"
         fc.update()
     # leave the camera on its final pose so a still rendered from the same
     # scene is unaffected by the animation data
