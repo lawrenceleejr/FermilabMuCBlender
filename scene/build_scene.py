@@ -35,6 +35,8 @@ Options (after the `--`):
   --fog-density D        ground fog peak density per metre (default 3.2e-3)
   --no-fog               disable the ground-fog volume
   --no-haze              disable the aerial haze volume (--haze-density D to tune)
+  --streak-strength S    glare streaks on point lights (default 0.16; render.sh uses
+                         0.008 for movies, where the effect flickers frame to frame)
   --tree-density F       scale tree counts (default 1.0; 0.3 for quick previews)
   --no-grass             skip foreground grass on the low camera
   --annotations PATH     write JSON projection of named features (for tools/annotate.py)
@@ -121,6 +123,17 @@ def parse_args():
     p.add_argument("--moon-energy", type=float, default=0.12)
     p.add_argument("--annotations", default="", help="write a JSON projection of the named site features for tools/annotate.py")
     p.add_argument("--save-blend", default="")
+    # The streak pass is a *thresholded* effect on sub-pixel point lights, which
+    # is why it behaves so differently in a still and in motion. Standing still
+    # it puts a diffraction spike on the far road lighting, which is what a
+    # distant light seen through kilometres of air looks like. Moving, every
+    # lamp that crosses the threshold as the camera pans gains or loses a
+    # four-armed star between one frame and the next, and 450 frames of that
+    # reads as a field of flashbulbs. render.sh turns it down to 5 % for the
+    # movie and leaves the stills alone.
+    p.add_argument("--streak-strength", type=float, default=0.16,
+                   help="glare streaks on the brightest points; 0 disables them. "
+                        "Much lower for animation than for stills -- see the note in the source")
     p.add_argument("--animate", type=float, default=0.0,
                    help="render a camera-approach movie of this many seconds instead of a still")
     p.add_argument("--fps", type=int, default=30, help="frame rate for --animate")
@@ -358,7 +371,7 @@ def main():
     # --- render setup -------------------------------------------------------------
     postfx.configure_cycles(scene, samples=args.samples, adaptive_threshold=args.adaptive_threshold, time_limit=args.time_limit, threads=args.threads, device=args.device, tile_size=args.tile_size)
     postfx.configure_output(scene, width=w, height=h, path=os.path.abspath(args.out), exposure=args.exposure)
-    postfx.build_compositor(scene)
+    postfx.build_compositor(scene, streak_strength=args.streak_strength)
 
     if args.annotations:
         dump_annotations(args.annotations, scene, cam, w, h, meta)
