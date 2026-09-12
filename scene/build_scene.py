@@ -37,6 +37,8 @@ Options (after the `--`):
   --no-haze              disable the aerial haze volume (--haze-density D to tune)
   --hold SEC             with --animate, hold the final pose for SEC seconds after
                          the move (default 1.5)
+  --no-denoise           disable the denoiser (see --twinkle: it is what flattens the
+                         twinkle amplitude into an on/off effect)
   --twinkle A            scintillation on the distant lamps, +/- A of their brightness
                          (default 0.015); works with the camera locked off
   --animated-seed        re-roll the sampling seed each frame (off; it reads as twinkle)
@@ -143,6 +145,13 @@ def parse_args():
                         "fraction of their brightness (0 disables). This is the light "
                         "varying, so it works on a locked-off camera -- unlike the "
                         "glare streaks, which need the camera to move")
+    p.add_argument("--no-denoise", action="store_true",
+                   help="turn the denoiser off. Relevant to animation: it runs per "
+                        "frame and is sharply non-linear, so any scene change at all "
+                        "produces about the same frame-to-frame difference regardless "
+                        "of its size -- which is why --twinkle's amplitude does not "
+                        "control the twinkle. Without it the amplitude means something "
+                        "again, at the cost of needing far more samples")
     p.add_argument("--twinkle-fraction", type=float, default=0.12,
                    help="what share of the distant lamps scintillate at all. THIS is "
                         "the dial for how much twinkle there is: the effect is binary "
@@ -398,7 +407,7 @@ def main():
         camera_rig.add_foreground_grass(cam, cols["cameras"])
 
     # --- render setup -------------------------------------------------------------
-    postfx.configure_cycles(scene, samples=args.samples, adaptive_threshold=args.adaptive_threshold, time_limit=args.time_limit, threads=args.threads, device=args.device)
+    postfx.configure_cycles(scene, samples=args.samples, adaptive_threshold=args.adaptive_threshold, time_limit=args.time_limit, threads=args.threads, device=args.device, denoise=not args.no_denoise)
     postfx.configure_output(scene, width=w, height=h, path=os.path.abspath(args.out), exposure=args.exposure)
     postfx.build_compositor(scene, streak_strength=args.streak_strength)
 
