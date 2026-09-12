@@ -139,11 +139,20 @@ def parse_args():
     p.add_argument("--streak-strength", type=float, default=0.16,
                    help="glare streaks on the brightest points; 0 disables them. "
                         "Much lower for animation than for stills -- see the note in the source")
-    p.add_argument("--twinkle", type=float, default=0.015,
+    p.add_argument("--twinkle", type=float, default=0.05,
                    help="scintillation amplitude on the distant street lights, as a "
                         "fraction of their brightness (0 disables). This is the light "
                         "varying, so it works on a locked-off camera -- unlike the "
                         "glare streaks, which need the camera to move")
+    p.add_argument("--twinkle-fraction", type=float, default=0.12,
+                   help="what share of the distant lamps scintillate at all. THIS is "
+                        "the dial for how much twinkle there is: the effect is binary "
+                        "per lamp (the denoiser sees any change as a change), so "
+                        "--twinkle and --twinkle-speed barely move the result")
+    p.add_argument("--twinkle-speed", type=float, default=0.85,
+                   help="how fast the scintillation evolves. The per-frame change is "
+                        "proportional to this, so it is the effective dial for how "
+                        "busy the twinkle looks -- more so than --twinkle")
     p.add_argument("--animated-seed", action="store_true",
                    help="vary the sampling seed per frame (--animate only). Off by "
                         "default: it re-rolls the noise on every frame, which across "
@@ -344,7 +353,9 @@ def main():
     site.build_collider(cols["collider"], concrete)
     site.build_water(cols["water"], water)
     site.build_roads(cols["roads"], asphalt)
-    site.build_street_lights(cols["lights"], twinkle=args.twinkle)
+    site.build_street_lights(cols["lights"], twinkle=args.twinkle,
+                             twinkle_speed=args.twinkle_speed,
+                             twinkle_fraction=args.twinkle_fraction)
     site.build_buildings(cols["buildings"], concrete)
     site.build_village(cols["buildings"])
     ntrees = site.build_trees(cols["trees"], density=args.tree_density)
