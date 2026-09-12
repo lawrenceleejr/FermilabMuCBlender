@@ -235,7 +235,8 @@ def emissive_material(name, color, strength, *, camera_strength=None,
     scintillate independently rather than pulsing as one. Time comes from a
     driver on `frame`: a still therefore renders a fixed, reproducible sample
     of the noise, indistinguishable from the per-lamp brightness spread that is
-    already there.
+    already there. The modulation applies to the camera ray only -- see below
+    for why that is load-bearing rather than a refinement.
     """
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
@@ -244,13 +245,6 @@ def emissive_material(name, color, strength, *, camera_strength=None,
     out = nt.nodes["Material Output"]
     em = nt.nodes.new("ShaderNodeEmission")
     em.inputs["Color"].default_value = (*color, 1.0)
-    if camera_strength is None:
-        s_sock, s_val = None, strength
-    else:
-        lp = nt.nodes.new("ShaderNodeLightPath")
-        _, s_sock = mix_float(nt, lp.outputs["Is Camera Ray"], strength, camera_strength)
-        s_val = None
-
     if twinkle > 0.0:
         info = nt.nodes.new("ShaderNodeObjectInfo")
         # a per-object offset, so neighbouring lamps are at different phases
@@ -275,15 +269,29 @@ def emissive_material(name, color, strength, *, camera_strength=None,
         # Fac in [0,1] -> [1 - twinkle, 1 + twinkle]
         f = nmath(nt, "MULTIPLY_ADD", n.outputs["Fac"], value_b=2.0 * twinkle)
         f.inputs[2].default_value = 1.0 - twinkle
-        if s_sock is None:
-            s_sock = nmath(nt, "MULTIPLY", f.outputs[0], value_b=s_val).outputs[0]
-            s_val = None
-        else:
-            s_sock = nmath(nt, "MULTIPLY", s_sock, f.outputs[0]).outputs[0]
-
-    if s_sock is None:
-        em.inputs["Strength"].default_value = s_val
+        # The modulation rides the *camera* branch only, and this is the whole
+        # difference between an amplitude that works and one that does not.
+        #
+        # Modulating the emitter's total power looks equivalent and is not:
+        # Cycles samples 20 000 lights from a distribution built on their power,
+        # so changing any of them reshuffles which lights each sample picks, and
+        # every frame comes back with a fresh noise realisation. Measured, that
+        # reshuffle swamped the signal completely -- amplitudes of 0.015 and
+        # 0.05 rendered indistinguishably (frame-to-frame means of 1.31 and 1.34
+        # luminance units) because what was being seen was not the modulation at
+        # all. Splitting on Is Camera Ray leaves every light's contribution to
+        # the scene exactly constant, so the sampler sees an unchanging scene
+        # and the only thing that varies between frames is what the lens sees.
+        cam = camera_strength if camera_strength is not None else strength
+        cam_sock = nmath(nt, "MULTIPLY", f.outputs[0], value_b=cam).outputs[0]
+        lp = nt.nodes.new("ShaderNodeLightPath")
+        _, s_sock = mix_float(nt, lp.outputs["Is Camera Ray"], strength, cam_sock)
+        nt.links.new(s_sock, em.inputs["Strength"])
+    elif camera_strength is None:
+        em.inputs["Strength"].default_value = strength
     else:
+        lp = nt.nodes.new("ShaderNodeLightPath")
+        _, s_sock = mix_float(nt, lp.outputs["Is Camera Ray"], strength, camera_strength)
         nt.links.new(s_sock, em.inputs["Strength"])
     nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
     return mat
