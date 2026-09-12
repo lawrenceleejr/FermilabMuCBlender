@@ -38,7 +38,7 @@ Options (after the `--`):
   --hold SEC             with --animate, hold the final pose for SEC seconds after
                          the move (default 1.5)
   --twinkle A            scintillation on the distant lamps, +/- A of their brightness
-                         (default 0.05); works with the camera locked off
+                         (default 0.015); works with the camera locked off
   --animated-seed        re-roll the sampling seed each frame (off; it reads as twinkle)
   --streak-strength S    glare streaks on point lights (default 0.16; render.sh uses
                          0.008 for movies, where the effect flickers frame to frame)
@@ -139,7 +139,7 @@ def parse_args():
     p.add_argument("--streak-strength", type=float, default=0.16,
                    help="glare streaks on the brightest points; 0 disables them. "
                         "Much lower for animation than for stills -- see the note in the source")
-    p.add_argument("--twinkle", type=float, default=0.05,
+    p.add_argument("--twinkle", type=float, default=0.015,
                    help="scintillation amplitude on the distant street lights, as a "
                         "fraction of their brightness (0 disables). This is the light "
                         "varying, so it works on a locked-off camera -- unlike the "
