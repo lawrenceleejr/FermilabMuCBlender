@@ -828,7 +828,7 @@ def build_village(col):
 
 
 def build_street_lights(col, *, near=1800.0, mid=16000.0, far=80500.0,
-                        mid_cap=6000, far_cap=19000, twinkle=0.05):
+                        mid_cap=6000, far_cap=19000, twinkle=0.015):
     """Lights on the roads that exist, out to 50 miles, in three registers.
 
     The registers exist because a street lamp cannot be drawn at every scale in
