@@ -828,7 +828,8 @@ def build_village(col):
 
 
 def build_street_lights(col, *, near=1800.0, mid=16000.0, far=80500.0,
-                        mid_cap=6000, far_cap=19000, twinkle=0.015):
+                        mid_cap=6000, far_cap=19000, twinkle=0.05,
+                        twinkle_speed=0.85, twinkle_fraction=0.12):
     """Lights on the roads that exist, out to 50 miles, in three registers.
 
     The registers exist because a street lamp cannot be drawn at every scale in
@@ -869,13 +870,34 @@ def build_street_lights(col, *, near=1800.0, mid=16000.0, far=80500.0,
     # the frames of the animation -- a *random* assignment per frame would be
     # literal twinkling and would also destroy the temporal denoiser.
     def _register(name, mesh_r, strength, cam, tints):
+        """Each brightness variant twice: one static, one scintillating.
+
+        `twinkle_fraction` of the lamps get the scintillating copy. That is the
+        dial, and it is the dial because the obvious ones are not: neither the
+        amplitude nor the rate changes what a frame-to-frame difference
+        measures. Held frames at 400 samples came back at 1.30, 1.30, 1.33 and
+        1.34 luminance units for amplitudes of 0.015 and 0.05 and rates of 0.20
+        and 0.85 -- every combination the same, while freezing the noise in time
+        gave pixel-identical frames.
+
+        The explanation that fits all five results is the denoiser. It runs per
+        frame, and it is sharply non-linear: once its input differs at all its
+        output differs by about that much, whether the input moved by half a
+        per cent or five. So the effect is binary per lamp -- a lamp either
+        shimmers or it does not -- and the only thing left to vary is how many
+        of them do.
+        """
         heads = []
         for i, (mul, tint) in enumerate(tints):
-            m = C.emissive_material(f"{name}_{i}", tint, strength * mul,
-                                    camera_strength=cam * mul, twinkle=twinkle)
-            me = C.sphere_mesh_data(f"{name}_head_{i}", mesh_r)
-            me.materials.append(m)
-            heads.append(me)
+            pair = []
+            for j, tw in enumerate((0.0, twinkle)):
+                m = C.emissive_material(f"{name}_{i}_{j}", tint, strength * mul,
+                                        camera_strength=cam * mul, twinkle=tw,
+                                        twinkle_speed=twinkle_speed)
+                me = C.sphere_mesh_data(f"{name}_head_{i}_{j}", mesh_r)
+                me.materials.append(m)
+                pair.append(me)
+            heads.append(pair)
         return heads
 
     # Temperatures, not hand-typed RGB: SODIUM is kelvin_rgb(2150) and these
@@ -982,7 +1004,8 @@ def build_street_lights(col, *, near=1800.0, mid=16000.0, far=80500.0,
 
     def variant(heads):
         r = pick.random()
-        return heads[0] if r < weights[0] else (heads[1] if r < weights[0] + weights[1] else heads[2])
+        pair = heads[0] if r < weights[0] else (heads[1] if r < weights[0] + weights[1] else heads[2])
+        return pair[1] if pick.random() < twinkle_fraction else pair[0]
 
     for j, (x, y) in enumerate(stride(mid_pts, mid_cap)):
         C.instance(f"lamp_mid_{j}", variant(heads_far), col=col,
