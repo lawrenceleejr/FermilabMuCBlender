@@ -28,7 +28,7 @@ across in the last seconds. The look direction is slerped between the two
 poses -- they differ by under 2 deg of pitch -- and the lens goes 26 -> 18 mm.
 Time is eased with smootherstep, so the move starts and lands at rest.
 
-The crossfade runs on altitude: metro above 9 km, site below 4.5 km. That is
+The crossfade runs on altitude: metro above 12 km, site below 3.5 km. That is
 where a pixel of the metro raster (15 m) stops being finer than a pixel of the
 frame, and where the site layer's own detail -- trees, poles, the 11 m boundary
 ribbon -- starts to resolve.
@@ -150,7 +150,7 @@ def ground_altitude(L):
 
 
 def stage(scene, cam, *, metro_cols, site_cols, seconds=12.0, fps=24, hold=1.5,
-          fade_hi=9000.0, fade_lo=4500.0):
+          fade_hi=12000.0, fade_lo=3500.0):
     """Keyframe the camera and the layer handover. Returns (frames_moving, frame_end)."""
     start, end = poses()
     n_move = max(2, int(round(seconds * fps)))
@@ -190,10 +190,7 @@ def stage(scene, cam, *, metro_cols, site_cols, seconds=12.0, fps=24, hold=1.5,
     # hide a layer outright while it is fully faded out
     first_site = next((i + 1 for i, m in enumerate(mixes) if m > 1e-4), n_move)
     last_metro = next((i + 1 for i, m in enumerate(mixes) if m >= 1.0 - 1e-4), n_move)
-    for col in site_cols:
-        _key_hidden(col, hidden_until=first_site - 1)
-    for col in metro_cols:
-        _key_hidden(col, hidden_from=last_metro + 1)
+    _install_visibility(site_cols, metro_cols, first_site, last_metro)
 
     # fade the materials
     site_objs = [o for c in site_cols for o in _all_objects(c)]
@@ -229,17 +226,24 @@ def _fcurves(action):
         return list(getattr(action, "fcurves", []))
 
 
-def _key_hidden(col, *, hidden_until=None, hidden_from=None):
-    """Keyframe a collection's render visibility (constant interpolation)."""
-    if hidden_until is not None and hidden_until >= 1:
-        col.hide_render = True
-        col.keyframe_insert("hide_render", frame=1)
-        col.hide_render = True
-        col.keyframe_insert("hide_render", frame=hidden_until)
-        col.hide_render = False
-        col.keyframe_insert("hide_render", frame=hidden_until + 1)
-    if hidden_from is not None:
-        col.hide_render = False
-        col.keyframe_insert("hide_render", frame=max(1, hidden_from - 1))
-        col.hide_render = True
-        col.keyframe_insert("hide_render", frame=hidden_from)
+def _install_visibility(site_cols, metro_cols, first_site, last_metro):
+    """Hide a layer while it is fully faded out. Collection visibility is not
+    animatable, so a frame-change handler sets it; it runs inside the
+    animation render of this same process. (A .blend saved from here renders
+    both layers on every frame -- correct, only slower.)"""
+    site_names = [c.name for c in site_cols]
+    metro_names = [c.name for c in metro_cols]
+
+    def handler(scene, *_):
+        f = scene.frame_current
+        for n in site_names:
+            c = bpy.data.collections.get(n)
+            if c is not None:
+                c.hide_render = f < first_site
+        for n in metro_names:
+            c = bpy.data.collections.get(n)
+            if c is not None:
+                c.hide_render = f > last_metro
+
+    bpy.app.handlers.frame_change_pre.append(handler)
+    handler(bpy.context.scene)
