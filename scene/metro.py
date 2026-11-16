@@ -113,7 +113,7 @@ def _axis(lo, hi, nlo, nhi, fine, coarse):
 # terrain
 # --------------------------------------------------------------------------- #
 def build_terrain(col, *, fine=150.0, coarse=1000.0, relief=0.55, albedo_gain=0.85,
-                  saturation=0.8, lamp_strength=300.0, glow_strength=0.04, feather=4000.0):
+                  saturation=0.8, lamp_strength=60.0, glow_strength=0.015, feather=4000.0):
     global _grid
     p = plan()
     near, far = p["regions"]["near"], p["regions"]["far"]
@@ -340,7 +340,7 @@ def build_overlays(col, *, scale=1.0, uchicago=True):
     # Chicago: the city limits in the boundary vocabulary, a little lighter than
     # the site's -- it is context, the site is the subject
     for k, ring in enumerate(p["chicago_limits"]):
-        _line(col, f"chicago_limits_{k}", ring, w * 0.85, BOUNDARY_WHITE, 2.6)
+        _line(col, f"chicago_limits_{k}", ring, w * 0.7, BOUNDARY_WHITE, 1.5)
     if uchicago:
         for k, poly in enumerate(p["uchicago_campus"]):
             _line(col, f"uchicago_{k}", poly, w * 0.75, BOUNDARY_WHITE, 4.0)

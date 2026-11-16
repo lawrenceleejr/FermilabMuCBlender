@@ -50,7 +50,7 @@ Options (after the `--`):
                          (VLHC Stage 1, the 233 km transmission-line 'Pipetron' ring)
   --compare-at WHERE     middle (default: halfway between the collider and the Loop) |
                          proposed (VLHC only: TM-2149's North Ring through Fermilab)
-  --lamp-strength K      metro: radiance per lamp per m^2 of lamp density (default 300)
+  --lamp-strength K      metro: radiance per lamp per m^2 of lamp density (default 60)
   --relief K             metro: cartographic relief shading on the ground (0..1, default 0.55)
   --annotations PATH     write JSON projection of named features (for tools/annotate.py)
   --save-blend PATH      also save the .blend
@@ -187,8 +187,8 @@ def parse_args():
     p.add_argument("--compare", default="none", choices=["none", "lhc", "fcc", "ssc", "vlhc"],
                    help="metro camera: overlay a comparison ring")
     p.add_argument("--compare-at", default="middle", choices=["middle", "proposed"])
-    p.add_argument("--lamp-strength", type=float, default=300.0)
-    p.add_argument("--glow-strength", type=float, default=0.04)
+    p.add_argument("--lamp-strength", type=float, default=60.0)
+    p.add_argument("--glow-strength", type=float, default=0.015)
     p.add_argument("--relief", type=float, default=0.55)
     p.add_argument("--no-uchicago", action="store_true")
     p.add_argument("--threads", type=int, default=0)
