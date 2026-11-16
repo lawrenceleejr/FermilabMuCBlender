@@ -164,6 +164,13 @@ for r in lhc fcc ssc vlhc; do
 done
 ```
 
+The whole HQ set in one go on a GPU workstation, resumable (finished frames are
+skipped), with the FCC placed in the gap between the site and the city:
+
+```sh
+tools/render_metro_set.sh        # -> renders/metro_{plain,lhc,fcc,ssc,vlhc}_hq.png
+```
+
 `render.sh` runs the fetch and bake itself the first time the metro camera is
 used. The host Python needs `numpy pillow scipy shapely pyshp mapbox-vector-tile`.
 
