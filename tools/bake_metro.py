@@ -428,6 +428,19 @@ def rdp(pts, tol):
     return [pts[0], pts[-1]]
 
 
+def rdp_ring(pts, tol):
+    """Simplify a closed ring: split at the vertex farthest from the first, so
+    neither half has coincident endpoints (which would make every offset zero)."""
+    pts = [tuple(p) for p in pts]
+    if len(pts) > 1 and pts[0] == pts[-1]:
+        pts = pts[:-1]
+    if len(pts) < 4:
+        return pts
+    a = np.asarray(pts[0])
+    k = int(np.argmax(np.hypot(*(np.asarray(pts) - a).T)))
+    return rdp(pts[:k + 1], tol)[:-1] + rdp(pts[k:] + [pts[0]], tol)[:-1]
+
+
 def chicago_rings():
     d = json.load(open(os.path.join(CACHE, "chicago_r122604.geojson")))
     g = d["features"][0]["geometry"]
@@ -436,7 +449,7 @@ def chicago_rings():
     for ring in polys:
         ll = np.asarray(ring)
         x, y = G.np_to_xy(ll[:, 1], ll[:, 0])
-        r = [[round(float(a), 1), round(float(b), 1)] for a, b in rdp(list(zip(x, y)), 8.0)]
+        r = [[round(float(a), 1), round(float(b), 1)] for a, b in rdp_ring(list(zip(x, y)), 8.0)]
         if len(r) >= 4:                          # tiny enclaves collapse under 8 m simplification
             out.append(r)
     return out
@@ -465,7 +478,7 @@ def uchicago_polys():
     out = []
     for p in keep:
         xy = list(p.exterior.coords)
-        out.append([[round(a, 1), round(b, 1)] for a, b in rdp(xy, 4.0)])
+        out.append([[round(a, 1), round(b, 1)] for a, b in rdp_ring(xy, 4.0)])
     area = sum(p.area for p in keep) / 1e6
     print(f"[bake] UChicago campus: {len(keep)} parts, {area:.2f} km^2")
     return out, area

@@ -144,6 +144,77 @@ to about a tenth of a metre. What the horizon does have is long-wavelength
 moraine relief — 267 m across the 60 km box, rising to the north-west — and
 inventing peaks would have replaced the one thing the terrain contributes.
 
+## The metro view: Fermilab to Chicago
+
+`--camera metro` pulls back to 28 km to put the laboratory and the city in one
+frame: Fermilab on the left, the City of Chicago on the right, Lake Michigan
+beyond, Milwaukee and Rockford on the far edge. The camera is 59 km south of the
+line between the site and the Loop, looking north 25° down on a 26 mm lens, in a
+2.4:1 frame. At 4K that is 24 m per pixel at Fermilab, so the collider is about
+130 px across, and 26 m per pixel at the Loop.
+
+```sh
+python3 tools/fetch_metro.py     # once: ~110 MB of tiles, TIGER roads, outlines (cached)
+python3 tools/bake_metro.py      # -> assets/metro/ (~60 MB of rasters, not committed)
+
+./render.sh --camera metro --preview
+./render.sh --gpu --final --camera metro --out renders/metro.png                    # 5760x2400
+for r in lhc fcc ssc vlhc; do
+  ./render.sh --gpu --final --camera metro --compare $r --out renders/metro_$r.png
+done
+```
+
+`render.sh` runs the fetch and bake itself the first time the metro camera is
+used. The host Python needs `numpy pillow scipy shapely pyshp mapbox-vector-tile`.
+
+What it is made of, and why:
+
+* **The Earth is curved.** At this scale the ground at the top of the frame is
+  2.4 km below the tangent plane at Wilson Hall, and an equirectangular plane is
+  2.4 % off in x. So the metro frame is the orthographic tangent plane at the
+  same origin: every vertex is at its true 3D position, and the site geometry
+  drops in unchanged (the two frames agree to centimetres across the campus).
+* **Every pixel is ground.** From 28 km the horizon is 5.4° below level, so the
+  frame holds no sky. The terrain, imagery and lights cover the camera's whole
+  ground footprint — 314 × 206 km, solved by ray-marching the frame border onto
+  the sphere — with a 150 m mesh and 15 m textures in the near half of the frame
+  and 1 km / 60–120 m beyond, cross-faded over 4 km.
+* **The map is the ground.** USGS orthoimagery (public domain) is the albedo,
+  lit by the same twilight sky as the site views. A cartographic relief shade
+  from the DEM (`--relief`, default 0.55, 4× exaggeration) lets the moraines and
+  river valleys read. Twilight has no sun to rake them, so without it the
+  topography is invisible from this height. It is a map convention, applied
+  gently, and is stated here rather than presented as light.
+* **The lights are the streets.** Lamps sit on every TIGER/Line road in the
+  eleven counties under the near half, spaced by road class. They are then
+  gated by NASA's Black Marble VIIRS composite, so a farm road in Kane County
+  stays dark the way it really does. Lamps are sodium (2150 K) outside the city
+  limits and LED (3000 K) inside, because Chicago replaced its sodium heads from
+  2017. Beyond the near region, lamps are drawn at the density Black Marble
+  implies, calibrated against the near region's own streets, plus the trunk
+  roads of IL, IN, WI and MI. That is about 1.8 M street lamps near and 3.5 M
+  lamps far, all baked to an emission texture.
+* **Same colours as the site figure.** Warm white marks boundaries (the
+  campus, the city limits, the UChicago campus), cyan the proposed chain, and
+  amber the Tevatron and Main Injector. A comparison ring is violet.
+
+Comparison rings (`--compare`), traced from their design documents' arc and
+straight lengths and centred halfway between the collider and Willis Tower
+(`--compare-at proposed` puts the VLHC on its 2001 North Ring site instead):
+
+| Ring | Layout | Total | Source |
+|---|---|---|---|
+| `lhc` | 8 arcs × 2 803.9 m + 8 straights × 528 m | 26.7 km | LHC Machine, JINST 3 S08001 |
+| `fcc` | 8 arcs × 9 616.2 m; straights alternating 1 400 / 2 032 m | 90.7 km | FCC Feasibility Study 2025, layout PA31 |
+| `ssc` | 2 arcs × 35 280 m (168°, r 12.0 km) + 2 clusters × 8 280 m (12°); major axis N18.8°W | 87.1 km | SSCL-SR-1041, lattice rev 4 |
+| `vlhc` | 2 arcs of r 35 km (174.4°) + 2 clusters × 9.75 km (5.6°) | 233 km | Fermilab-TM-2149 (VLHC Stage 1, the transmission-line "Pipetron" magnet) |
+
+The SSC's clusters are drawn as uniform 12° bends, which smooths away their
+internal straights and bypasses. Credit line for published metro renders:
+imagery USGS; night lights NASA Earth Observatory; streets US Census TIGER/Line;
+elevation AWS Terrain Tiles; city limits and campus © OpenStreetMap
+contributors (ODbL).
+
 ## Ring sizes
 
 Radii come from the IMCC *Tentative Parameter list for the International Muon
