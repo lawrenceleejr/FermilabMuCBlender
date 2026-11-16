@@ -42,7 +42,7 @@ PLAN = os.path.join(DIR, "metro_plan.json")
 
 BOUNDARY_WHITE = (1.0, 0.93, 0.82)          # site.build_campus_boundary's colour
 EXISTING_AMBER = (1.0, 0.62, 0.22)
-COMPARE_VIOLET = (0.78, 0.52, 1.0)
+COMPARE_VIOLET = (0.62, 0.36, 1.0)       # bright emitters desaturate under AgX: keep it dim and saturated
 
 _plan = None
 _grid = None            # (xs, ys, Z) of the terrain mesh, for draping overlays
@@ -428,7 +428,7 @@ def build_comparison(col, name, *, at="middle", scale=1.0):
     else:
         cx, cy = middle()
     pts = [(x + cx, y + cy) for x, y in pts]
-    _line(col, f"compare_{name}", pts, 46.0 * scale, COMPARE_VIOLET, 6.0)
+    _line(col, f"compare_{name}", pts, 46.0 * scale, COMPARE_VIOLET, 1.6)
     print(f"[metro] comparison ring {label}: traced {total / 1000:.2f} km "
           f"(closure gap {gap:.0f} m), centred ({cx / 1000:.1f}, {cy / 1000:.1f}) km [{at}]")
     return label
