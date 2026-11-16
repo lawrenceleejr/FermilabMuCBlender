@@ -49,6 +49,8 @@ Options (after the `--`):
   --compare RING         metro camera only: overlay a comparison ring -- lhc | fcc | ssc | vlhc
                          (VLHC Stage 1, the 233 km transmission-line 'Pipetron' ring)
   --compare-at WHERE     middle (default: halfway between the collider and the Loop) |
+                         gap (the open country between the site and the city: the
+                         centre with the most clearance to both outlines) |
                          proposed (VLHC only: TM-2149's North Ring through Fermilab)
   --lamp-strength K      metro: radiance per lamp per m^2 of lamp density (default 60)
   --relief K             metro: cartographic relief shading on the ground (0..1, default 0.55)
@@ -186,7 +188,8 @@ def parse_args():
     p.add_argument("--no-render", action="store_true")
     p.add_argument("--compare", default="none", choices=["none", "lhc", "fcc", "ssc", "vlhc"],
                    help="metro camera: overlay a comparison ring")
-    p.add_argument("--compare-at", default="middle", choices=["middle", "proposed"])
+    p.add_argument("--compare-at", default="middle", choices=["middle", "gap", "proposed"])
+    p.add_argument("--compare-center", default="", help="metro: comparison ring centre as X,Y in km (overrides --compare-at)")
     p.add_argument("--lamp-strength", type=float, default=60.0)
     p.add_argument("--glow-strength", type=float, default=0.015)
     p.add_argument("--relief", type=float, default=0.55)
@@ -385,7 +388,8 @@ def main():
                             glow_strength=args.glow_strength, relief=args.relief)
         metro.build_overlays(cols["site"], uchicago=not args.no_uchicago)
         if args.compare != "none":
-            metro.build_comparison(cols["site"], args.compare, at=args.compare_at)
+            cc = tuple(float(v) * 1000.0 for v in args.compare_center.split(",")) if args.compare_center else None
+            metro.build_comparison(cols["site"], args.compare, at=args.compare_at, center=cc)
         args.no_fog = True
         ntrees = 0
     else:

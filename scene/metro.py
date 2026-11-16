@@ -416,9 +416,83 @@ def middle():
     return ((site.MC_C[0] + wx) / 2.0, (site.MC_C[1] + wy) / 2.0)
 
 
-def build_comparison(col, name, *, at="middle", scale=1.0):
+def _densify_np(poly, step):
+    return np.asarray(_densify(poly, step, True))
+
+
+def _inside(poly, pts):
+    """Even-odd point-in-polygon for many points at once."""
+    P = np.asarray(poly)
+    x, y = pts[:, 0][:, None], pts[:, 1][:, None]
+    x0, y0 = P[:, 0][None, :], P[:, 1][None, :]
+    x1, y1 = np.roll(P[:, 0], -1)[None, :], np.roll(P[:, 1], -1)[None, :]
+    cross = ((y0 > y) != (y1 > y)) & (x < (x1 - x0) * (y - y0) / np.where(y1 != y0, y1 - y0, 1e-12) + x0)
+    return cross.sum(1) % 2 == 1
+
+
+def gap_centre(pts):
+    """Centre for a comparison ring in the open country between the site and
+    the city: on the line from the collider to Willis Tower (within 4 km of it,
+    so the ring sits *between* the two rather than wandering off into open
+    country where clearance is trivially large), the position that maximises
+    the smaller of its clearances to the Fermilab boundary and to the Chicago
+    city limits, with neither enclosed.
+
+    Clearances are measured from the ring's own traced path to the outlines
+    densified at 250 m, so a long straight stretch of city limit counts along
+    its length and not only at its vertices. Solved coarse-to-fine: 1 km over
+    the whole gap, then 100 m around the best."""
+    ring = np.asarray(pts)[::3]                       # ~450 m spacing is plenty for distances
+    fnal = _densify_np(site.CAMPUS_BOUNDARY, 250.0)
+    chi = np.vstack([_densify_np(r, 250.0) for r in plan()["chicago_limits"]])
+    outline = plan()["chicago_limits"][0]
+
+    def score(cx, cy):
+        r = ring + (cx, cy)
+        d_f = np.sqrt(((r[:, None, :] - fnal[None, :, :]) ** 2).sum(-1)).min()
+        d_c = np.sqrt(((r[:, None, :] - chi[None, :, :]) ** 2).sum(-1)).min()
+        # neither outline may sit inside the ring (or the ring inside it)
+        ring_poly = r
+        if _inside(ring_poly, fnal[::8]).any() or _inside(ring_poly, chi[::20]).any():
+            return -1.0, d_f, d_c
+        if _inside(outline, r[::10]).any():
+            return -1.0, d_f, d_c
+        return min(d_f, d_c), d_f, d_c
+
+    (ax, ay), (bx_, by_) = site.MC_C, plan()["willis_tower"]
+    slope = (by_ - ay) / (bx_ - ax)
+
+    def on_line(cx):
+        return ay + slope * (cx - ax)
+
+    best = (-2.0, 0.0, 0.0, 0.0, 0.0)
+    for cx in np.arange(ax, bx_ + 1.0, 1000.0):
+        for dy in np.arange(-4000.0, 4001.0, 1000.0):
+            cy = on_line(cx) + dy
+            s, df, dc = score(cx, cy)
+            if s > best[0]:
+                best = (s, cx, cy, df, dc)
+    _, bx, by, _, _ = best
+    for cx in np.arange(bx - 1000.0, bx + 1001.0, 100.0):
+        for cy in np.arange(by - 1000.0, by + 1001.0, 100.0):
+            if abs(cy - on_line(cx)) > 4000.0:
+                continue
+            s, df, dc = score(cx, cy)
+            if s > best[0]:
+                best = (s, cx, cy, df, dc)
+    s, cx, cy, df, dc = best
+    print(f"[metro] gap placement: clearance {df / 1000:.2f} km to the Fermilab boundary, "
+          f"{dc / 1000:.2f} km to the Chicago limits")
+    return float(cx), float(cy)
+
+
+def build_comparison(col, name, *, at="middle", scale=1.0, center=None):
     pts, label, total, gap = ring_path(name)
-    if at == "proposed" and name == "vlhc":
+    if center is not None:
+        cx, cy = center
+    elif at == "gap":
+        cx, cy = gap_centre(pts)
+    elif at == "proposed" and name == "vlhc":
         # TM-2149's preferred North Ring: symmetry axis N-S through Fermilab, the
         # Fermilab cluster at its south end, running E-W and tangent to the
         # Tevatron (taken here as tangent on the Tevatron's north side).
