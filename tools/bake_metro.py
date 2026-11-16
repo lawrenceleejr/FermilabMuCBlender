@@ -69,7 +69,7 @@ LOCAL = {"S1400", "S1640", "S1730", "S1780"}
 # Black Marble gate (tile value 0..255): below LO a road is dark, above HI fully lit
 GATE_LOCAL = (25.0, 110.0)
 GATE_TRUNK = (14.0, 70.0)    # trunk roads are lit further into the exurbs
-DMAX = {"near": 0.02, "far": 0.0035}    # lamps per m^2 at code 255
+DMAX = {"near": 0.02, "far": 0.0035, "outer": 0.0035}    # lamps per m^2 at code 255
 
 
 # --------------------------------------------------------------------------- #
@@ -198,6 +198,12 @@ def bake_dem(tag, region, res, datum):
 def bake_albedo(tag, region, res):
     m, g = mosaic(f"imagery_{tag}", "RGB")
     a = resample(m, g, region, res)
+    if tag == "outer":
+        # USGS imagery stops at the border: fill Canada's blank tiles with the
+        # median land colour. At 400+ km they sit under a near-opaque haze.
+        blank = a.max(-1) < 2.0
+        if blank.any():
+            a[blank] = np.median(a[~blank], axis=0)
     Image.fromarray(np.clip(np.round(a), 0, 255).astype(np.uint8)).save(
         os.path.join(OUT, f"albedo_{tag}.jpg"), quality=90, subsampling=0)
     print(f"[bake] albedo_{tag}: {a.shape[1]}x{a.shape[0]} @ {res:.0f} m")
@@ -274,7 +280,7 @@ def encode(dens, dmax):
     return np.round(np.clip(dens / dmax, 0, 1) ** (1 / 2.2) * 255).astype(np.uint8)
 
 
-def bake_lights(near_wet, far_wet, chicago_polys):
+def bake_lights(near_wet, far_wet, chicago_polys, outer_wet=None):
     t0 = time.time()
     bm_m, bm_g = mosaic("nightlights", "L")
     bm = bm_m.astype(np.float32)
@@ -396,7 +402,22 @@ def bake_lights(near_wet, far_wet, chicago_polys):
     sod_n[near_wet_up] = led_n[near_wet_up] = 0
     sod_f[far_wet] = led_f[far_wet] = 0
 
-    for tag, sod, led, glow, res in (("near", sod_n, led_n, glow_n, rn), ("far", sod_f, led_f, glow_f, rf)):
+    regions = [("near", sod_n, led_n, glow_n, rn), ("far", sod_f, led_f, glow_f, rf)]
+
+    # --- the outer ring: lamps at the density Black Marble implies, everywhere --
+    ro = G.RES["lights_outer"]
+    if outer_wet is not None:
+        bo_m, bo_g = mosaic("nightlights_outer", "L")
+        Xo, Yo = plan_grid(G.OUTER, ro)
+        lato, lono = G.np_to_latlon(Xo, Yo)
+        bm_o = sample(bo_m.astype(np.float32), bo_g, lato, lono)
+        del Xo, Yo, lato, lono
+        sod_o = (f[np.clip(bm_o.astype(int), 0, 255)] * ro * ro).astype(np.float32)
+        glow_o = np.clip((bm_o - 18.0) / 237.0, 0, 1) ** 1.6
+        sod_o[outer_wet] = 0
+        glow_o[outer_wet] = 0
+        regions.append(("outer", sod_o, np.zeros_like(sod_o), glow_o, ro))
+    for tag, sod, led, glow, res in regions:
         area = res * res
         rgb = np.stack([encode(sod / area, DMAX[tag]), encode(led / area, DMAX[tag]),
                         np.round(np.clip(glow, 0, 1) ** (1 / 2.2) * 255).astype(np.uint8)], -1)
@@ -407,6 +428,8 @@ def bake_lights(near_wet, far_wet, chicago_polys):
           f"{time.time() - t0:.0f}s")
     return dict(near=dict(file="lights_near.png", res=rn, dmax=DMAX["near"]),
                 far=dict(file="lights_far.png", res=rf, dmax=DMAX["far"]),
+                outer=dict(file="lights_outer.png", res=ro, dmax=DMAX["outer"]),
+                calibration_lamps_per_m2=[float(v) for v in f],
                 encoding="density = dmax * (v/255)^2.2 lamps per m^2; R sodium, G LED, B glow (v/255)^2.2",
                 lamps_near=n_near, lamps_trunk=n_trunk)
 
@@ -492,21 +515,25 @@ def main():
     dem_f, _, wet_f = bake_dem("far", G.FAR, G.RES["dem_far"], datum)
     alb_n = bake_albedo("near", G.NEAR, G.RES["albedo_near"])
     alb_f = bake_albedo("far", G.FAR, G.RES["albedo_far"])
+    dem_o, _, wet_o = bake_dem("outer", G.OUTER, G.RES["dem_outer"], datum)
+    alb_o = bake_albedo("outer", G.OUTER, G.RES["albedo_outer"])
+    wo = np.asarray(Image.fromarray(wet_o.astype(np.uint8) * 255).resize(
+        G.grid_shape(G.OUTER, G.RES["lights_outer"])[::-1], Image.NEAREST)) > 0
     chi = chicago_rings()
     uc, uc_area = uchicago_polys()
     # far water mask on the lights grid
     wf = np.asarray(Image.fromarray(wet_f.astype(np.uint8) * 255).resize(
         G.grid_shape(G.FAR, G.RES["lights_far"])[::-1], Image.NEAREST)) > 0
-    lights = bake_lights(wet_n, wf, chi)
+    lights = bake_lights(wet_n, wf, chi, wo)
 
     from shapely.geometry import Polygon
     chi_area = (Polygon(chi[0]).area - sum(Polygon(h).area for h in chi[1:])) / 1e6
     plan = {
         "origin": {"lat": G.LAT0, "lon": G.LON0,
                    "note": "orthographic tangent plane at OSM Wilson Hall; x east, y north, z up, metres"},
-        "regions": {"near": list(G.NEAR), "far": list(G.FAR)},
-        "dem": {"near": dem_n, "far": dem_f},
-        "albedo": {"near": alb_n, "far": alb_f},
+        "regions": {"near": list(G.NEAR), "far": list(G.FAR), "outer": list(G.OUTER)},
+        "dem": {"near": dem_n, "far": dem_f, "outer": dem_o},
+        "albedo": {"near": alb_n, "far": alb_f, "outer": alb_o},
         "lights": lights,
         "lake_surface_m": LAKE_MICHIGAN_M,
         "chicago_limits": chi,

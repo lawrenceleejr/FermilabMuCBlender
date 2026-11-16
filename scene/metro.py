@@ -112,13 +112,37 @@ def _axis(lo, hi, nlo, nhi, fine, coarse):
 # --------------------------------------------------------------------------- #
 # terrain
 # --------------------------------------------------------------------------- #
+def _extend(axis, lo, hi, step):
+    out = list(axis)
+    x = axis[0]
+    while x - step > lo:
+        x -= step
+        out.insert(0, x)
+    out.insert(0, lo)
+    x = axis[-1]
+    while x + step < hi:
+        x += step
+        out.append(x)
+    out.append(hi)
+    return np.asarray(out, np.float64)
+
+
 def build_terrain(col, *, fine=150.0, coarse=1000.0, relief=0.55, albedo_gain=0.85,
-                  saturation=0.8, lamp_strength=60.0, glow_strength=0.015, feather=4000.0):
+                  saturation=0.8, lamp_strength=60.0, glow_strength=0.015, feather=4000.0,
+                  outer=False, outer_step=4000.0):
+    """`outer` adds the ring out to the horizon (OUTER region, 4 km quads, 1 km
+    textures) that the flight's 3:2 frame needs from 28 km; the still does not
+    see it and leaves it off."""
     global _grid
     p = plan()
     near, far = p["regions"]["near"], p["regions"]["far"]
+    outer = outer and "outer" in p["regions"]
     xs = _axis(far[0], far[1], near[0], near[1], fine, coarse)
     ys = _axis(far[2], far[3], near[2], near[3], fine, coarse)
+    if outer:
+        ob = p["regions"]["outer"]
+        xs = _extend(xs, ob[0], ob[1], outer_step)
+        ys = _extend(ys, ob[2], ob[3], outer_step)
     X, Y = np.meshgrid(xs, ys)
     dn, mn = _dem_array("near")
     df, mf = _dem_array("far")
@@ -127,6 +151,11 @@ def build_terrain(col, *, fine=150.0, coarse=1000.0, relief=0.55, albedo_gain=0.
     zf = _sample(df, far, mf["res"], X, Y)
     inside = (X >= near[0]) & (X <= near[1]) & (Y >= near[2]) & (Y <= near[3])
     elev = np.where(inside, zn, zf)
+    if outer:
+        do, mo = _dem_array("outer")
+        zo = _sample(do, ob, mo["res"], X, Y)
+        in_far = (X >= far[0]) & (X <= far[1]) & (Y >= far[2]) & (Y <= far[3])
+        elev = np.where(in_far, elev, zo)
     lake = p["lake_surface_m"]
     elev = np.maximum(elev, lake)                     # the lake is a flat surface, not its bed
     drop = np.sqrt(np.maximum(G.R_EARTH ** 2 - X ** 2 - Y ** 2, 0.0)) - G.R_EARTH
@@ -152,7 +181,8 @@ def build_terrain(col, *, fine=150.0, coarse=1000.0, relief=0.55, albedo_gain=0.
     C.link_object(obj, col)
     obj.data.materials.append(terrain_material(relief=relief, albedo_gain=albedo_gain,
                                                saturation=saturation, lamp_strength=lamp_strength,
-                                               glow_strength=glow_strength, feather=feather))
+                                               glow_strength=glow_strength, feather=feather,
+                                               outer=outer))
     print(f"[metro] terrain {nx}x{ny} = {len(verts)} verts over "
           f"{(far[1] - far[0]) / 1000:.0f} x {(far[3] - far[2]) / 1000:.0f} km, "
           f"elev {elev.min():.0f}..{elev.max():.0f} m, Earth drop to {drop.min():.0f} m")
@@ -170,7 +200,8 @@ def height(x, y):
             + Z[i + 1, j] * (1 - u) * v + Z[i + 1, j + 1] * u * v)
 
 
-def terrain_material(*, relief, albedo_gain, saturation, lamp_strength, glow_strength, feather):
+def terrain_material(*, relief, albedo_gain, saturation, lamp_strength, glow_strength, feather,
+                     outer=False):
     p = plan()
     near, far = p["regions"]["near"], p["regions"]["far"]
     L = p["lights"]
@@ -202,23 +233,33 @@ def terrain_material(*, relief, albedo_gain, saturation, lamp_strength, glow_str
         nt.links.new(vec, n.inputs["Vector"])
         return n
 
-    # near weight: 1 inside the near region, ramping to 0 over `feather` at its edges
-    edges = []
-    for val, sign in ((near[0], 1), (near[1], -1)):
-        e = C.nmath(nt, "SUBTRACT", X, value_b=val) if sign > 0 else C.nmath(nt, "SUBTRACT", value_a=val, b=X)
-        edges.append(e.outputs[0])
-    for val, sign in ((near[2], 1), (near[3], -1)):
-        e = C.nmath(nt, "SUBTRACT", Y, value_b=val) if sign > 0 else C.nmath(nt, "SUBTRACT", value_a=val, b=Y)
-        edges.append(e.outputs[0])
-    m = C.nmath(nt, "MINIMUM", edges[0], edges[1])
-    m = C.nmath(nt, "MINIMUM", m.outputs[0], edges[2])
-    m = C.nmath(nt, "MINIMUM", m.outputs[0], edges[3])
-    wn = C.nmath(nt, "MULTIPLY", m.outputs[0], value_b=1.0 / feather, clamp=True).outputs[0]
+    def inside_weight(region, fe):
+        """1 inside `region`, ramping to 0 over `fe` metres at its edges."""
+        edges = []
+        for val, sign in ((region[0], 1), (region[1], -1)):
+            e = C.nmath(nt, "SUBTRACT", X, value_b=val) if sign > 0 else C.nmath(nt, "SUBTRACT", value_a=val, b=X)
+            edges.append(e.outputs[0])
+        for val, sign in ((region[2], 1), (region[3], -1)):
+            e = C.nmath(nt, "SUBTRACT", Y, value_b=val) if sign > 0 else C.nmath(nt, "SUBTRACT", value_a=val, b=Y)
+            edges.append(e.outputs[0])
+        m = C.nmath(nt, "MINIMUM", edges[0], edges[1])
+        m = C.nmath(nt, "MINIMUM", m.outputs[0], edges[2])
+        m = C.nmath(nt, "MINIMUM", m.outputs[0], edges[3])
+        return C.nmath(nt, "MULTIPLY", m.outputs[0], value_b=1.0 / fe, clamp=True).outputs[0]
+
+    wn = inside_weight(near, feather)
+    if outer:
+        outer_r = p["regions"]["outer"]
+        uvo = uv(outer_r)
+        wf = inside_weight(far, 10000.0)
 
     # --- albedo + relief -----------------------------------------------------------
     an = tex(p["albedo"]["near"]["file"], uvn, non_color=False)
     af = tex(p["albedo"]["far"]["file"], uvf, non_color=False)
     _, alb = C.mix_color(nt, wn, af.outputs["Color"], an.outputs["Color"])
+    if outer:
+        ao = tex(p["albedo"]["outer"]["file"], uvo, non_color=False)
+        _, alb = C.mix_color(nt, wf, ao.outputs["Color"], alb)
     hs = nt.nodes.new("ShaderNodeHueSaturation")
     hs.inputs["Saturation"].default_value = saturation
     hs.inputs["Value"].default_value = albedo_gain
@@ -226,6 +267,9 @@ def terrain_material(*, relief, albedo_gain, saturation, lamp_strength, glow_str
     xn = tex(p["dem"]["near"]["aux"], uvn)
     xf = tex(p["dem"]["far"]["aux"], uvf)
     _, aux = C.mix_color(nt, wn, xf.outputs["Color"], xn.outputs["Color"])
+    if outer:
+        xo = tex(p["dem"]["outer"]["aux"], uvo)
+        _, aux = C.mix_color(nt, wf, xo.outputs["Color"], aux)
     sc = nt.nodes.new("ShaderNodeSeparateColor")
     nt.links.new(aux, sc.inputs["Color"])
     # relief factor 1 + k (2 r - 1)
@@ -256,6 +300,9 @@ def terrain_material(*, relief, albedo_gain, saturation, lamp_strength, glow_str
     dn_ = decode(ln, L["near"]["dmax"])
     df_ = decode(lf, L["far"]["dmax"])
     chans = [C.mix_float(nt, wn, f, n)[1] for f, n in zip(df_, dn_)]
+    if outer:
+        do_ = decode(tex(L["outer"]["file"], uvo), L["outer"]["dmax"])
+        chans = [C.mix_float(nt, wf, o, c)[1] for o, c in zip(do_, chans)]
     sodium, led = C.kelvin_rgb(2150), C.kelvin_rgb(3000)
     glow_c = C.kelvin_rgb(2300)
 

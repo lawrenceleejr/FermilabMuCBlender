@@ -37,12 +37,19 @@ LAT0, LON0 = 41.838327, -88.261661
 # rasters are already finer than the pixel.
 FAR = (-140000.0, 200000.0, -45000.0, 190000.0)
 NEAR = (-30000.0, 85000.0, -35000.0, 50000.0)
+# OUTER carries the ground to the horizon for the flight (scene/flight.py),
+# whose 3:2 frame shows the horizon from 28 km: 597 km away at that height.
+# At 1 km texels it is hazed to near-invisibility at those distances, but it is
+# real ground with real city glow on it -- Milwaukee, Rockford, Gary, Grand
+# Rapids -- rather than the edge of a mesh.
+OUTER = (-480000.0, 520000.0, -140000.0, 580000.0)
 
 # raster resolutions, metres per texel
 RES = {
     "dem_near": 30.0, "dem_far": 240.0,
     "albedo_near": 15.0, "albedo_far": 120.0,
     "lights_near": 15.0, "lights_far": 60.0,
+    "dem_outer": 2000.0, "albedo_outer": 1000.0, "lights_outer": 1000.0,
 }
 
 # --- places ------------------------------------------------------------------------

@@ -55,6 +55,10 @@ TILESETS = {
     "imagery_near": ("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}", 13, "NEAR", "jpg"),
     "imagery_far": ("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}", 10, "FAR", "jpg"),
     "nightlights": ("https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/2016-01-01/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png", 8, "FAR", "png"),
+    # the outer ring, to the horizon (scene/flight.py)
+    "dem_outer": ("https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png", 6, "OUTER", "png"),
+    "imagery_outer": ("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}", 7, "OUTER", "jpg"),
+    "nightlights_outer": ("https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/2016-01-01/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png", 7, "OUTER", "png"),
 }
 
 # Counties under the NEAR region (state FIPS + county FIPS)
@@ -218,6 +222,9 @@ LAYERS = {
     "nightlights": lambda: fetch_tiles("nightlights"),
     "imagery_far": lambda: fetch_tiles("imagery_far"),
     "imagery_near": lambda: fetch_tiles("imagery_near"),
+    "dem_outer": lambda: fetch_tiles("dem_outer"),
+    "imagery_outer": lambda: fetch_tiles("imagery_outer"),
+    "nightlights_outer": lambda: fetch_tiles("nightlights_outer"),
     "tiger_prisec": fetch_tiger_prisec,
     "tiger_roads": fetch_tiger_roads,
     "chicago": fetch_chicago,

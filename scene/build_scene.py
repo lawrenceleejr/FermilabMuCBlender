@@ -54,6 +54,8 @@ Options (after the `--`):
                          proposed (VLHC only: TM-2149's North Ring through Fermilab)
   --lamp-strength K      metro: radiance per lamp per m^2 of lamp density (default 60)
   --relief K             metro: cartographic relief shading on the ground (0..1, default 0.55)
+  --flight SECONDS       render the flight: from the metro view down to the site overview
+                         in one move of SECONDS (+ --hold), at --fps; frames to <out stem>/
   --annotations PATH     write JSON projection of named features (for tools/annotate.py)
   --save-blend PATH      also save the .blend
   --no-render            build/save only
@@ -74,7 +76,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
 from scene import anim, atmosphere, camera_rig, common as C, postfx, site, wilson_hall  # noqa: E402
-from scene import metro  # noqa: E402
+from scene import flight, metro  # noqa: E402
 
 # Cameras high/wide enough that the site-boundary ribbon reads as an outline on the ground
 # rather than a line across the horizon.
@@ -194,6 +196,8 @@ def parse_args():
     p.add_argument("--glow-strength", type=float, default=0.015)
     p.add_argument("--relief", type=float, default=0.55)
     p.add_argument("--no-uchicago", action="store_true")
+    p.add_argument("--flight", type=float, default=0.0,
+                   help="render the metro-to-overview flight of this many seconds")
     p.add_argument("--threads", type=int, default=0)
     return p.parse_args(argv)
 
@@ -373,8 +377,19 @@ def main():
     concrete = C.pbr_material("site_concrete", "Concrete042A_1K-JPG", scale=3.0, tint=(0.7, 0.68, 0.64), normal_strength=0.6)
 
     # --- geometry -------------------------------------------------------------
-    is_metro = args.camera == "metro"
-    if is_metro:
+    is_metro = args.camera == "metro" and not args.flight
+    if args.flight:
+        # Both layers: the full site scene, ending on its overview camera, and
+        # the metro ground with its outer ring to the horizon. scene/flight.py
+        # hands one over to the other during the descent.
+        args.camera = "overview"
+        ntrees = _build_site(args, cols, prairie, water, asphalt, concrete)
+        focus = _FOCUS[0]
+        cols["metro"] = C.new_collection("metro")
+        metro.build_terrain(cols["metro"], outer=True, lamp_strength=args.lamp_strength,
+                            glow_strength=args.glow_strength, relief=args.relief)
+        metro.build_overlays(cols["metro"], uchicago=not args.no_uchicago)
+    elif is_metro:
         # The metro view: the site's own machines and buildings stay (they are
         # real geometry, a few pixels across from here), but its terrain, trees,
         # fog and three-register street lighting give way to the metro ground,
@@ -395,6 +410,8 @@ def main():
     else:
         ntrees = _build_site(args, cols, prairie, water, asphalt, concrete)
         focus = _FOCUS[0]
+    if args.flight:
+        print(f"[build] flight: site layer + metro layer")
     print(f"[build] geometry done: {len(bpy.data.objects)} objects, {ntrees} trees, {time.time() - t0:.1f}s")
     _atmosphere_camera_render(args, scene, cols, focus, t0, is_metro)
 
@@ -443,6 +460,12 @@ def _atmosphere_camera_render(args, scene, cols, focus, t0, is_metro):
     atmosphere.build_world(sky_path, mode=args.sky, strength=args.sky_strength, rotation_deg=args.sky_rot,
                            sun_elevation_deg=sun_el, sun_azimuth_deg=sun_az, star_scale=args.star_scale,
                            stars=not args.no_stars and args.sky in ("nishita", "hdri"))
+    if args.flight and not args.no_haze:
+        cols["metro_atmo"] = C.new_collection("metro_atmosphere")
+        # the metro haze has to reach the horizon from 28 km: 600 km out, where
+        # the ground is 28 km below the tangent plane
+        metro.build_haze(cols["metro_atmo"], density=args.haze_density, center=(20000.0, 220000.0),
+                         size=(1000000.0, 760000.0), zlo=-32000.0, zhi=5000.0)
     if not args.no_haze:
         if is_metro:
             metro.build_haze(cols["atmosphere"], density=args.haze_density)
@@ -468,6 +491,19 @@ def _atmosphere_camera_render(args, scene, cols, focus, t0, is_metro):
     if args.annotations:
         dump_annotations(args.annotations, scene, cam, w, h, meta)
 
+    if args.flight:
+        site_cols = [cols[k] for k in ("site", "wilson_hall", "collider", "water", "roads",
+                                       "lights", "buildings", "trees", "atmosphere")]
+        metro_cols = [cols["metro"]] + ([cols["metro_atmo"]] if "metro_atmo" in cols else [])
+        flight.stage(scene, cam, metro_cols=metro_cols, site_cols=site_cols,
+                     seconds=args.flight, fps=args.fps, hold=args.hold)
+        scene.render.use_motion_blur = False
+        scene.cycles.use_animated_seed = args.animated_seed
+        scene.render.use_persistent_data = True
+        scene.cycles.transparent_max_bounces = 32
+        cam.data.clip_end = 700000.0
+        cam.data.clip_start = 2.0
+
     if args.save_blend:
         os.makedirs(os.path.dirname(os.path.abspath(args.save_blend)) or ".", exist_ok=True)
         blend_path = os.path.abspath(args.save_blend)
@@ -479,6 +515,24 @@ def _atmosphere_camera_render(args, scene, cols, focus, t0, is_metro):
             print("[build] relative paths:", e)
         print(f"[build] saved {blend_path}")
     print(f"[build] scene ready in {time.time() - t0:.1f}s")
+
+    if args.flight:
+        stem = os.path.splitext(os.path.abspath(args.out))[0]
+        os.makedirs(stem, exist_ok=True)
+        scene.render.filepath = os.path.join(stem, "frame_")
+        scene.render.image_settings.file_format = "PNG"
+        print(f"[render] flight frames -> {scene.render.filepath}####.png "
+              f"({scene.frame_end} frames, {w}x{h}, {args.samples} spp)")
+        if not args.no_render:
+            t1 = time.time()
+            bpy.ops.render.render(animation=True)
+            dt = time.time() - t1
+            print(f"[render] {scene.frame_end} frames in {dt / 60:.0f} min "
+                  f"({dt / max(scene.frame_end, 1):.1f}s per frame)")
+            print(f"[render] encode with: ffmpeg -y -framerate {args.fps} "
+                  f"-i {scene.render.filepath}%04d.png -c:v libx264 -pix_fmt yuv420p "
+                  f"-crf 17 {stem}.mp4")
+        return
 
     if args.animate:
         # A frame sequence, not a video file. Cycles writing straight to a
