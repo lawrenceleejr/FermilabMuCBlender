@@ -19,3 +19,7 @@ __pycache__/
 # PNGs and hundreds of MB, and render.sh encodes them to an .mp4 beside the
 # directory. The .mp4 is the deliverable and stays tracked.
 renders/movie_*/
+
+# The metro view's downloads and baked rasters (~150 MB): tools/fetch_metro.py
+# and tools/bake_metro.py rebuild them, and render.sh does so on first use
+assets/metro/

@@ -46,6 +46,12 @@ Options (after the `--`):
                          0.008 for movies, where the effect flickers frame to frame)
   --tree-density F       scale tree counts (default 1.0; 0.3 for quick previews)
   --no-grass             skip foreground grass on the low camera
+  --compare RING         metro camera only: overlay a comparison ring -- lhc | fcc | ssc | vlhc
+                         (VLHC Stage 1, the 233 km transmission-line 'Pipetron' ring)
+  --compare-at WHERE     middle (default: halfway between the collider and the Loop) |
+                         proposed (VLHC only: TM-2149's North Ring through Fermilab)
+  --lamp-strength K      metro: radiance per lamp per m^2 of lamp density (default 300)
+  --relief K             metro: cartographic relief shading on the ground (0..1, default 0.55)
   --annotations PATH     write JSON projection of named features (for tools/annotate.py)
   --save-blend PATH      also save the .blend
   --no-render            build/save only
@@ -66,6 +72,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
 from scene import anim, atmosphere, camera_rig, common as C, postfx, site, wilson_hall  # noqa: E402
+from scene import metro  # noqa: E402
 
 # Cameras high/wide enough that the site-boundary ribbon reads as an outline on the ground
 # rather than a line across the horizon.
@@ -177,6 +184,13 @@ def parse_args():
     p.add_argument("--no-descent", action="store_true",
                    help="with --animate, keep the machines in the ground instead of lowering them in")
     p.add_argument("--no-render", action="store_true")
+    p.add_argument("--compare", default="none", choices=["none", "lhc", "fcc", "ssc", "vlhc"],
+                   help="metro camera: overlay a comparison ring")
+    p.add_argument("--compare-at", default="middle", choices=["middle", "proposed"])
+    p.add_argument("--lamp-strength", type=float, default=300.0)
+    p.add_argument("--glow-strength", type=float, default=0.04)
+    p.add_argument("--relief", type=float, default=0.55)
+    p.add_argument("--no-uchicago", action="store_true")
     p.add_argument("--threads", type=int, default=0)
     return p.parse_args(argv)
 
@@ -356,8 +370,38 @@ def main():
     concrete = C.pbr_material("site_concrete", "Concrete042A_1K-JPG", scale=3.0, tint=(0.7, 0.68, 0.64), normal_strength=0.6)
 
     # --- geometry -------------------------------------------------------------
+    is_metro = args.camera == "metro"
+    if is_metro:
+        # The metro view: the site's own machines and buildings stay (they are
+        # real geometry, a few pixels across from here), but its terrain, trees,
+        # fog and three-register street lighting give way to the metro ground,
+        # whose lamps come from the street network of the whole region.
+        focus = wilson_hall.build(cols["wilson_hall"], floodlights=False)
+        site.build_rings(cols["site"], prairie, water)
+        site.build_collider(cols["collider"], concrete)
+        site.build_water(cols["water"], water)
+        site.build_buildings(cols["buildings"], concrete)
+        metro.build_terrain(cols["site"], lamp_strength=args.lamp_strength,
+                            glow_strength=args.glow_strength, relief=args.relief)
+        metro.build_overlays(cols["site"], uchicago=not args.no_uchicago)
+        if args.compare != "none":
+            metro.build_comparison(cols["site"], args.compare, at=args.compare_at)
+        args.no_fog = True
+        ntrees = 0
+    else:
+        ntrees = _build_site(args, cols, prairie, water, asphalt, concrete)
+        focus = _FOCUS[0]
+    print(f"[build] geometry done: {len(bpy.data.objects)} objects, {ntrees} trees, {time.time() - t0:.1f}s")
+    _atmosphere_camera_render(args, scene, cols, focus, t0, is_metro)
+
+
+_FOCUS = [None]
+
+
+def _build_site(args, cols, prairie, water, asphalt, concrete):
     site.build_terrain(cols["site"], prairie)
     focus = wilson_hall.build(cols["wilson_hall"], floodlights=not args.no_floods)
+    _FOCUS[0] = focus
     site.build_rings(cols["site"], prairie, water)
     site.build_collider(cols["collider"], concrete)
     site.build_water(cols["water"], water)
@@ -378,8 +422,10 @@ def main():
         print(f"[build] site boundary highlighted ({args.camera})")
     if args.towns:
         site.build_towns(cols["site"])
-    print(f"[build] geometry done: {len(bpy.data.objects)} objects, {ntrees} trees, {time.time() - t0:.1f}s")
+    return ntrees
 
+
+def _atmosphere_camera_render(args, scene, cols, focus, t0, is_metro):
     # --- atmosphere -------------------------------------------------------------
     sky_path = args.sky_file if args.sky in ("twilight", "milkyway") else hdri_path(args.hdri, args.hdri_res)
     meta = sky_metadata(sky_path)
@@ -394,7 +440,10 @@ def main():
                            sun_elevation_deg=sun_el, sun_azimuth_deg=sun_az, star_scale=args.star_scale,
                            stars=not args.no_stars and args.sky in ("nishita", "hdri"))
     if not args.no_haze:
-        atmosphere.build_haze(cols["atmosphere"], density=args.haze_density)
+        if is_metro:
+            metro.build_haze(cols["atmosphere"], density=args.haze_density)
+        else:
+            atmosphere.build_haze(cols["atmosphere"], density=args.haze_density)
     if not args.no_fog:
         atmosphere.build_ground_fog(cols["atmosphere"], density=args.fog_density)
     if args.moon:

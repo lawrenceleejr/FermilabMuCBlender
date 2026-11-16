@@ -41,9 +41,19 @@ done
 case "$camera" in
   overview|overview_south) final_res=3840x2560; prev_res=640x427; movie_res=1920x1280 ;;
   cover|portrait)          final_res=2400x3600; prev_res=400x600;  movie_res=1200x1800 ;;
+  # 2.4:1, the frame the metro view was solved for (see camera_rig "metro")
+  metro)                   final_res=5760x2400; prev_res=1200x500; movie_res=2880x1200 ;;
   *)                       final_res=3840x2160; prev_res=640x360;  movie_res=1920x1080 ;;
 esac
 default_out="$HERE/renders/fermilab_site_${camera}.png"
+
+# The metro view's ground, imagery and street lights are ~60 MB of rasters baked
+# from public tile and TIGER downloads -- fetched and baked on first use, like
+# the textures, rather than committed.
+if [[ "$camera" == "metro" && ! -f "$HERE/assets/metro/metro_plan.json" ]]; then
+  python3 "$HERE/tools/fetch_metro.py"
+  python3 "$HERE/tools/bake_metro.py"
+fi
 
 args=(); res_set=$has_res
 for a in "$@"; do

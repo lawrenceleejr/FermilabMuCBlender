@@ -14,6 +14,7 @@ import bpy
 from mathutils import Vector
 
 from . import common as C
+from . import metro_geo as _MG
 
 PRESETS = {
     # name: dict(location, target, lens, fstop)
@@ -95,6 +96,20 @@ PRESETS = {
     "high": dict(location=(-900.0, -1500.0, 520.0), target=(500.0, -300.0, 0.0), lens=35.0, fstop=2.8),
     "low": dict(location=(-330.0, -430.0, 42.0), target=(0.0, 0.0, 40.0), lens=32.0, fstop=1.4),
     "portrait": dict(location=(-420.0, -390.0, 140.0), target=(10.0, 5.0, 40.0), lens=35.0, fstop=1.8),
+    # --- the metro view: Fermilab left, the City of Chicago right, from 28 km.
+    # Solved in the framing study by projecting the real campus boundary and the
+    # city limits through a pinhole camera over the curved Earth: 59 km south of
+    # the Fermilab-Loop line and 28 km above its own nadir, looking north 25.4
+    # deg down, 26 mm (69.4 deg horizontal) on a 2.4:1 frame, lens-shifted so
+    # the subjects sit a little below centre. The horizon is 5.4 deg below
+    # level at this height, so the frame is all ground -- out to Milwaukee and
+    # Rockford across the top -- and the sky only lights it. z is relative to
+    # the curved ground (scene/metro_geo.py): the nadir is 354 m below the
+    # tangent plane. Render at 2.4:1, e.g. 5760x2400.
+    "metro": dict(
+        location=(_MG.CAM_A_XY[0], _MG.CAM_A_XY[1], _MG.drop(*_MG.CAM_A_XY) + _MG.CAM_A_ALT),
+        target=(_MG.CAM_A_TARGET_XY[0], _MG.CAM_A_TARGET_XY[1], _MG.drop(*_MG.CAM_A_TARGET_XY)),
+        lens=_MG.CAM_A_LENS, fstop=16.0, shift_y=_MG.CAM_A_SHIFT_Y, clip_end=700000.0, clip_start=20.0),
 }
 
 
@@ -104,8 +119,8 @@ def make_camera(name, preset, focus_obj, *, col=None, aspect=(16, 9), lens=None,
     cam.sensor_width = 36.0
     cam.sensor_fit = "HORIZONTAL" if aspect[0] >= aspect[1] else "VERTICAL"
     cam.lens = lens or p["lens"]
-    cam.clip_start = 0.5
-    cam.clip_end = 80000.0
+    cam.clip_start = p.get("clip_start", 0.5)
+    cam.clip_end = p.get("clip_end", 80000.0)
     cam.dof.use_dof = True
     cam.dof.focus_object = focus_obj
     cam.dof.aperture_fstop = fstop or p["fstop"]
