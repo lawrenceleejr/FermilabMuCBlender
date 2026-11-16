@@ -391,6 +391,23 @@ def main():
         metro.build_terrain(cols["metro"], outer=True, lamp_strength=args.lamp_strength,
                             glow_strength=args.glow_strength, relief=args.relief)
         metro.build_overlays(cols["metro"], uchicago=not args.no_uchicago)
+        # The metro layer has to sit under the site layer everywhere the site
+        # ground exists, or it occludes the site layer as it fades in and the
+        # handover collapses into a cut on the frame the metro layer is hidden.
+        # The gap is measured rather than assumed: the two grounds sample
+        # different DEMs, and the site's sits tens of metres below its nominal
+        # datum (geo.elev is -67 m at Wilson Hall in Blender, where its 16-bit
+        # PNG is colour-decoded). Lowered by the largest excess plus 25 m --
+        # a uniform shift of the whole layer, invisible from altitude.
+        import numpy as np
+        xs = np.linspace(-29000.0, 29000.0, 59)
+        gx, gy = np.meshgrid(xs, xs)
+        mz = metro.height(gx.ravel(), gy.ravel())
+        sz = np.array([site.geo.elev(float(x), float(y)) for x, y in zip(gx.ravel(), gy.ravel())])
+        offset = float(np.max(mz - sz)) + 25.0
+        for o in cols["metro"].objects:
+            o.location.z -= offset
+        print(f"[build] flight: metro layer lowered {offset:.0f} m under the site ground")
     elif is_metro:
         # The metro view: the site's own machines and buildings stay (they are
         # real geometry, a few pixels across from here), but its terrain, trees,

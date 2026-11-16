@@ -59,16 +59,48 @@ def _smoothstep(a, b, x):
 # --------------------------------------------------------------------------- #
 # fades
 # --------------------------------------------------------------------------- #
+_GROUP = "flight_site_mix"
+
+
+def _mix_group():
+    """One shader node group whose output is scene["site_mix"], via a driver.
+
+    A View Layer attribute would be the natural way to read a scene property
+    in a shader, and it does not work here: Cycles reads it when it syncs the
+    shader, and with persistent data on (needed, or 50 000 objects re-sync
+    every frame) an animated custom property does not trigger a re-sync -- so
+    the whole cross-fade collapsed into a cut on the frame a layer was hidden.
+    A driver on a node value is a change to the node tree, which does."""
+    g = bpy.data.node_groups.get(_GROUP)
+    if g is not None:
+        return g
+    g = bpy.data.node_groups.new(_GROUP, "ShaderNodeTree")
+    g.interface.new_socket("Fac", in_out="OUTPUT", socket_type="NodeSocketFloat")
+    out = g.nodes.new("NodeGroupOutput")
+    val = g.nodes.new("ShaderNodeValue")
+    val.outputs[0].default_value = 0.0
+    drv = val.outputs[0].driver_add("default_value").driver
+    drv.type = "SCRIPTED"
+    v = drv.variables.new()
+    v.name = "m"
+    v.type = "SINGLE_PROP"
+    v.targets[0].id_type = "SCENE"
+    v.targets[0].id = bpy.context.scene
+    v.targets[0].data_path = f'["{PROP}"]'
+    drv.expression = "m"
+    g.links.new(val.outputs[0], out.inputs["Fac"])
+    return g
+
+
 def _fac(nt, invert):
-    attr = nt.nodes.new("ShaderNodeAttribute")
-    attr.attribute_type = "VIEW_LAYER"
-    attr.attribute_name = PROP
+    node = nt.nodes.new("ShaderNodeGroup")
+    node.node_tree = _mix_group()
     if not invert:
-        return attr.outputs["Fac"]
+        return node.outputs["Fac"]
     m = nt.nodes.new("ShaderNodeMath")
     m.operation = "SUBTRACT"
     m.inputs[0].default_value = 1.0
-    nt.links.new(attr.outputs["Fac"], m.inputs[1])
+    nt.links.new(node.outputs["Fac"], m.inputs[1])
     return m.outputs[0]
 
 
