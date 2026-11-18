@@ -540,6 +540,11 @@ def _atmosphere_camera_render(args, scene, cols, focus, t0, is_metro):
         os.makedirs(stem, exist_ok=True)
         scene.render.filepath = os.path.join(stem, "frame_")
         scene.render.image_settings.file_format = "PNG"
+        # A full-quality flight is a day of GPU time: keep finished frames and
+        # skip them on a restart, so an interruption costs one frame, not a run.
+        # Placeholders let two machines share a sequence without colliding.
+        scene.render.use_overwrite = False
+        scene.render.use_placeholder = True
         print(f"[render] flight frames -> {scene.render.filepath}####.png "
               f"({scene.frame_end} frames, {w}x{h}, {args.samples} spp)")
         if not args.no_render and args.flight_frames:
